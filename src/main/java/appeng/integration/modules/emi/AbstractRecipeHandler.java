@@ -1,25 +1,11 @@
 package appeng.integration.modules.emi;
 
-import static appeng.integration.modules.itemlists.TransferHelper.BLUE_SLOT_HIGHLIGHT_COLOR;
-import static appeng.integration.modules.itemlists.TransferHelper.RED_SLOT_HIGHLIGHT_COLOR;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
-import org.jetbrains.annotations.Nullable;
-
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.inventory.Slot;
-import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.level.Level;
-
+import appeng.api.stacks.AEKey;
+import appeng.integration.modules.itemlists.EncodingHelper;
+import appeng.integration.modules.itemlists.TransferHelper;
+import appeng.menu.AEBaseMenu;
+import appeng.menu.SlotSemantics;
+import appeng.menu.me.items.CraftingTermMenu;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.VanillaEmiRecipeCategories;
 import dev.emi.emi.api.recipe.handler.EmiCraftContext;
@@ -28,13 +14,22 @@ import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.widget.Bounds;
 import dev.emi.emi.api.widget.SlotWidget;
 import dev.emi.emi.api.widget.Widget;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.level.Level;
+import org.jetbrains.annotations.Nullable;
 
-import appeng.api.stacks.AEKey;
-import appeng.integration.modules.itemlists.EncodingHelper;
-import appeng.integration.modules.itemlists.TransferHelper;
-import appeng.menu.AEBaseMenu;
-import appeng.menu.SlotSemantics;
-import appeng.menu.me.items.CraftingTermMenu;
+import java.util.*;
+import java.util.stream.Collectors;
+
+import static appeng.integration.modules.itemlists.TransferHelper.BLUE_SLOT_HIGHLIGHT_COLOR;
+import static appeng.integration.modules.itemlists.TransferHelper.RED_SLOT_HIGHLIGHT_COLOR;
 
 abstract class AbstractRecipeHandler<T extends AEBaseMenu> implements StandardRecipeHandler<T> {
     protected static final int CRAFTING_GRID_WIDTH = 3;
@@ -289,6 +284,46 @@ abstract class AbstractRecipeHandler<T extends AEBaseMenu> implements StandardRe
             }
         }
 
+        static final class TransferItems extends Result {
+
+            private final List<EmiIngredient> missing;
+            private final List<EmiIngredient> craftable;
+
+            public TransferItems(List<Ingredient> missing, List<Ingredient> craftable) {
+                this.missing = missing.stream().map(EmiIngredient::of).collect(Collectors.toList());
+                this.craftable = craftable.stream().map(EmiIngredient::of).collect(Collectors.toList());
+            }
+
+            @Override
+            boolean canCraft() {
+                return missing.isEmpty();
+            }
+
+            @Override
+            void render(
+                EmiRecipe recipe, EmiCraftContext<? extends AEBaseMenu> context, List<Widget> widgets, GuiGraphics guiGraphics
+            ) {
+                renderSlotOverlays(getRecipeInputSlots(recipe, widgets).values(), guiGraphics);
+            }
+
+            private void renderSlotOverlays(Collection<SlotWidget> inputSlots, GuiGraphics guiGraphics) {
+                for (var slot : inputSlots) {
+                    boolean isMissing = missing.stream().anyMatch(ing -> EmiIngredient.areEqual(ing, slot.getStack()));
+                    boolean isCraftable = craftable.stream().anyMatch(ing -> EmiIngredient.areEqual(ing, slot.getStack()));
+
+                    if (isMissing || isCraftable) {
+                        var poseStack = guiGraphics.pose();
+                        poseStack.pushPose();
+                        poseStack.translate(0, 0, 400);
+                        var innerBounds = getInnerBounds(slot);
+                        guiGraphics.fill(innerBounds.x(), innerBounds.y(), innerBounds.right(),
+                            innerBounds.bottom(), isMissing ? RED_SLOT_HIGHLIGHT_COLOR : BLUE_SLOT_HIGHLIGHT_COLOR);
+                        poseStack.popPose();
+                    }
+                }
+            }
+        }
+
         static NotApplicable createNotApplicable() {
             return new NotApplicable();
         }
@@ -303,6 +338,10 @@ abstract class AbstractRecipeHandler<T extends AEBaseMenu> implements StandardRe
 
         static Error createFailed(Component text, Set<Integer> missingSlots) {
             return new Error(text, missingSlots);
+        }
+
+        static TransferItems createMissingTransferItems(List<Ingredient> missing, List<Ingredient> craftable) {
+            return new TransferItems(missing, craftable);
         }
     }
 
@@ -337,7 +376,7 @@ abstract class AbstractRecipeHandler<T extends AEBaseMenu> implements StandardRe
                 bounds.height() - 2);
     }
 
-    private static Map<Integer, SlotWidget> getRecipeInputSlots(EmiRecipe recipe, List<Widget> widgets) {
+    protected static Map<Integer, SlotWidget> getRecipeInputSlots(EmiRecipe recipe, List<Widget> widgets) {
         // Map ingredient indices to their respective slots
         var inputSlots = new HashMap<Integer, SlotWidget>(recipe.getInputs().size());
         for (int i = 0; i < recipe.getInputs().size(); i++) {

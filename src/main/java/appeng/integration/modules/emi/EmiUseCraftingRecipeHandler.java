@@ -1,25 +1,21 @@
 package appeng.integration.modules.emi;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-
-import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.core.NonNullList;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.CraftingBookCategory;
-import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.item.crafting.ShapedRecipe;
-import net.minecraft.world.item.crafting.ShapedRecipePattern;
-
-import dev.emi.emi.api.recipe.EmiRecipe;
-import dev.emi.emi.api.stack.EmiStack;
-
 import appeng.core.localization.ItemModText;
 import appeng.integration.modules.itemlists.CraftingHelper;
 import appeng.menu.me.items.CraftingTermMenu;
+import dev.emi.emi.api.recipe.EmiRecipe;
+import dev.emi.emi.api.stack.EmiStack;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.core.NonNullList;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.*;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * Recipe transfer implementation with the intended purpose of actually crafting an item. Most of the work is done
@@ -49,7 +45,7 @@ public class EmiUseCraftingRecipeHandler<T extends CraftingTermMenu> extends Abs
 
         boolean craftingRecipe = isCraftingRecipe(recipe, emiRecipe);
         if (!craftingRecipe) {
-            return Result.createNotApplicable();
+            return transferItemsToInventory(menu, recipe);
         }
 
         if (!fitsIn3x3Grid(recipe, emiRecipe)) {
@@ -57,7 +53,7 @@ public class EmiUseCraftingRecipeHandler<T extends CraftingTermMenu> extends Abs
         }
 
         if (recipe == null) {
-            recipe = createFakeRecipe(emiRecipe);
+            recipe = createFakeCraftingRecipe(emiRecipe);
         }
 
         // Find missing ingredient
@@ -84,7 +80,31 @@ public class EmiUseCraftingRecipeHandler<T extends CraftingTermMenu> extends Abs
         return Result.createSuccessful();
     }
 
-    private Recipe<?> createFakeRecipe(EmiRecipe display) {
+    private Result transferItemsToInventory(T menu, @Nullable Recipe<?> recipe) {
+        if (recipe == null) {
+            return Result.createNotApplicable();
+        }
+
+        if (!Screen.hasShiftDown()) {
+            return Result.createFailed(Component.literal("Press Shift to quick transfer items to your inventory."));
+        }
+
+        // get inputs from the recipe
+        NonNullList<Ingredient> ingredients = recipe.getIngredients();
+
+        // find missing and craftable items to highlight them in the recipe screen
+        CraftingTermMenu.TransferData transferData = menu.findMissingTransferIngredients(ingredients);
+
+        var result = Result.createMissingTransferItems(transferData.missing(), transferData.craftable());
+        if (result.canCraft()) {
+            // actually transfer
+            return Result.createSuccessful();
+        }
+
+        return result;
+    }
+
+    private Recipe<?> createFakeCraftingRecipe(EmiRecipe display) {
         var ingredients = NonNullList.withSize(CRAFTING_GRID_WIDTH * CRAFTING_GRID_HEIGHT,
                 Ingredient.EMPTY);
 

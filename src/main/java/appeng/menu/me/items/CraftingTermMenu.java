@@ -58,6 +58,22 @@ import appeng.menu.slot.CraftingMatrixSlot;
 import appeng.menu.slot.CraftingTermSlot;
 import appeng.parts.reporting.CraftingTerminalPart;
 import appeng.util.inv.PlayerInternalInventory;
+import com.google.common.base.Preconditions;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Container;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.CraftingContainer;
+import net.minecraft.world.inventory.MenuType;
+import net.minecraft.world.inventory.TransientCraftingContainer;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.CraftingRecipe;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.level.Level;
+
+import java.util.*;
 
 /**
  * Can only be used with a host that implements {@link ISegmentedInventory} and exposes an inventory named "crafting" to
@@ -194,6 +210,61 @@ public class CraftingTermMenu extends MEStorageMenu implements IMenuCraftingPack
         return super.hasIngredient(ingredient, reservedAmounts);
     }
 
+    public TransferData findMissingTransferIngredients(List<Ingredient> ingredients) {
+
+        List<Ingredient> missing = new ArrayList<>();
+        List<Ingredient> craftable = new ArrayList<>();
+
+        var reservedGridAmounts = new Object2IntOpenHashMap<>();
+        var playerItems = getPlayerInventory().items;
+        var reservedPlayerItems = new int[playerItems.size()];
+
+        for (var ingredient : ingredients) {
+
+            boolean found = false;
+            // Player inventory is cheaper to check
+            for (int i = 0; i < playerItems.size(); i++) {
+                // Do not consider locked slots
+                if (isPlayerInventorySlotLocked(i)) {
+                    continue;
+                }
+
+                var stack = playerItems.get(i);
+                if (stack.getCount() - reservedPlayerItems[i] > 0 && ingredient.test(stack)) {
+                    reservedPlayerItems[i]++;
+                    found = true;
+                    break;
+                }
+            }
+
+            // Then check the terminal screen's repository of network items
+            if (!found) {
+                // We use AE stacks to get an easily comparable item type key that ignores stack size
+                if (hasIngredient(ingredient, reservedGridAmounts)) {
+                    reservedGridAmounts.merge(ingredient, 1, Integer::sum);
+                    found = true;
+                }
+            }
+
+            // Check the terminal once again, but this time for craftable items
+            if (!found) {
+                for (var stack : ingredient.getItems()) {
+                    if (isCraftable(stack)) {
+                        craftable.add(ingredient);
+                        found = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!found) {
+                missing.add(ingredient);
+            }
+        }
+
+        return new TransferData(missing, craftable);
+    }
+
     /**
      * Determines which slots of the given slot-to-item map cannot be filled with items based on the contents of this
      * terminal or player inventory.
@@ -278,6 +349,10 @@ public class CraftingTermMenu extends MEStorageMenu implements IMenuCraftingPack
         public boolean anyCraftable() {
             return !craftableSlots.isEmpty();
         }
+    }
+
+    public record TransferData(List<Ingredient> missing, List<Ingredient> craftable) {
+
     }
 
     protected boolean isCraftable(ItemStack itemStack) {
