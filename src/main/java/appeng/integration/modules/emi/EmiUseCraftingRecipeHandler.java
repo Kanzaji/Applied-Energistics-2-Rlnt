@@ -1,7 +1,11 @@
 package appeng.integration.modules.emi;
 
+import appeng.api.stacks.AEItemKey;
 import appeng.core.localization.ItemModText;
 import appeng.integration.modules.itemlists.CraftingHelper;
+import appeng.integration.modules.itemlists.EncodingHelper;
+import appeng.menu.me.common.GridInventoryEntry;
+import appeng.menu.me.common.MEStorageMenu;
 import appeng.menu.me.items.CraftingTermMenu;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.stack.EmiStack;
@@ -13,6 +17,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.*;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -85,22 +90,43 @@ public class EmiUseCraftingRecipeHandler<T extends CraftingTermMenu> extends Abs
             return Result.createNotApplicable();
         }
 
-        // Find missing ingredient
         var slotToIngredientMap = getGuiSlotToIngredientMapTransfer(recipe);
         var missingSlots = menu.findMissingIngredients(slotToIngredientMap);
+        var templateItems = findTemplateItems(recipe, menu);
 
         if (doTransfer) {
             boolean craftMissing = Screen.hasControlDown();
             CraftingHelper.performTransfer(menu, recipeId, recipe, craftMissing);
-            // craft items and move to player inventory
         } else {
             if (missingSlots.anyMissingOrCraftable()) {
-                // Highlight the slots with missing ingredients
                 return new Result.PartiallyCraftable(missingSlots);
             }
         }
 
         return Result.createSuccessful();
+    }
+
+    private static NonNullList<ItemStack> findTemplateItems(Recipe<?> recipe, MEStorageMenu menu) {
+        var ingredientPriorities = EncodingHelper.getIngredientPriorities(menu, Comparator.comparing(GridInventoryEntry::getStoredAmount));
+
+        var ingredients = recipe.getIngredients();
+        var templateItems = NonNullList.withSize(ingredients.size(), ItemStack.EMPTY);
+        for (int i = 0; i < ingredients.size(); i++) {
+            var ingredient = ingredients.get(i);
+            if (!ingredient.isEmpty()) {
+                // Try to find the best item. In case the ingredient is a tag, it might contain versions the
+                // player doesn't actually have
+                var stack = ingredientPriorities.entrySet()
+                    .stream()
+                    .filter(e -> e.getKey() instanceof AEItemKey itemKey && itemKey.matches(ingredient))
+                    .max(Comparator.comparingInt(Map.Entry::getValue))
+                    .map(e -> ((AEItemKey) e.getKey()).toStack())
+                    .orElseGet(() -> ingredient.getItems()[0]);
+
+                templateItems.set(i, stack);
+            }
+        }
+        return templateItems;
     }
 
     private Recipe<?> createFakeCraftingRecipe(EmiRecipe display) {
