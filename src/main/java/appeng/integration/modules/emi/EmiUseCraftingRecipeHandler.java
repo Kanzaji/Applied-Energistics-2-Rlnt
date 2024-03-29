@@ -8,7 +8,7 @@ import dev.emi.emi.api.stack.EmiStack;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.NonNullList;
-import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.*;
 import org.jetbrains.annotations.Nullable;
@@ -45,7 +45,7 @@ public class EmiUseCraftingRecipeHandler<T extends CraftingTermMenu> extends Abs
 
         boolean craftingRecipe = isCraftingRecipe(recipe, emiRecipe);
         if (!craftingRecipe) {
-            return transferItemsToInventory(menu, recipe);
+            return transferItemsToInventory(menu, recipeId, recipe, doTransfer);
         }
 
         if (!fitsIn3x3Grid(recipe, emiRecipe)) {
@@ -80,28 +80,27 @@ public class EmiUseCraftingRecipeHandler<T extends CraftingTermMenu> extends Abs
         return Result.createSuccessful();
     }
 
-    private Result transferItemsToInventory(T menu, @Nullable Recipe<?> recipe) {
+    private Result transferItemsToInventory(T menu, ResourceLocation recipeId, @Nullable Recipe<?> recipe, boolean doTransfer) {
         if (recipe == null) {
             return Result.createNotApplicable();
         }
 
-        if (!Screen.hasShiftDown()) {
-            return Result.createFailed(Component.literal("Press Shift to quick transfer items to your inventory."));
+        // Find missing ingredient
+        var slotToIngredientMap = getGuiSlotToIngredientMapTransfer(recipe);
+        var missingSlots = menu.findMissingIngredients(slotToIngredientMap);
+
+        if (doTransfer) {
+            boolean craftMissing = Screen.hasControlDown();
+            CraftingHelper.performTransfer(menu, recipeId, recipe, craftMissing);
+            // craft items and move to player inventory
+        } else {
+            if (missingSlots.anyMissingOrCraftable()) {
+                // Highlight the slots with missing ingredients
+                return new Result.PartiallyCraftable(missingSlots);
+            }
         }
 
-        // get inputs from the recipe
-        NonNullList<Ingredient> ingredients = recipe.getIngredients();
-
-        // find missing and craftable items to highlight them in the recipe screen
-        CraftingTermMenu.TransferData transferData = menu.findMissingTransferIngredients(ingredients);
-
-        var result = Result.createMissingTransferItems(transferData.missing(), transferData.craftable());
-        if (result.canCraft()) {
-            // actually transfer
-            return Result.createSuccessful();
-        }
-
-        return result;
+        return Result.createSuccessful();
     }
 
     private Recipe<?> createFakeCraftingRecipe(EmiRecipe display) {
@@ -142,4 +141,16 @@ public class EmiUseCraftingRecipeHandler<T extends CraftingTermMenu> extends Abs
         return result;
     }
 
+    public static Map<Integer, Ingredient> getGuiSlotToIngredientMapTransfer(Recipe<?> recipe) {
+        var ingredients = recipe.getIngredients();
+
+        Map<Integer, Ingredient> result = new HashMap<>();
+        for (int i = 0; i < ingredients.size(); i++) {
+            var ingredient = ingredients.get(i);
+            if (!ingredient.isEmpty()) {
+                result.put(i, ingredient);
+            }
+        }
+        return result;
+    }
 }

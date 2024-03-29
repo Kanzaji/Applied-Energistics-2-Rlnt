@@ -73,7 +73,10 @@ import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Can only be used with a host that implements {@link ISegmentedInventory} and exposes an inventory named "crafting" to
@@ -208,61 +211,6 @@ public class CraftingTermMenu extends MEStorageMenu implements IMenuCraftingPack
         }
 
         return super.hasIngredient(ingredient, reservedAmounts);
-    }
-
-    public TransferData findMissingTransferIngredients(List<Ingredient> ingredients) {
-
-        List<Ingredient> missing = new ArrayList<>();
-        List<Ingredient> craftable = new ArrayList<>();
-
-        var reservedGridAmounts = new Object2IntOpenHashMap<>();
-        var playerItems = getPlayerInventory().items;
-        var reservedPlayerItems = new int[playerItems.size()];
-
-        for (var ingredient : ingredients) {
-
-            boolean found = false;
-            // Player inventory is cheaper to check
-            for (int i = 0; i < playerItems.size(); i++) {
-                // Do not consider locked slots
-                if (isPlayerInventorySlotLocked(i)) {
-                    continue;
-                }
-
-                var stack = playerItems.get(i);
-                if (stack.getCount() - reservedPlayerItems[i] > 0 && ingredient.test(stack)) {
-                    reservedPlayerItems[i]++;
-                    found = true;
-                    break;
-                }
-            }
-
-            // Then check the terminal screen's repository of network items
-            if (!found) {
-                // We use AE stacks to get an easily comparable item type key that ignores stack size
-                if (hasIngredient(ingredient, reservedGridAmounts)) {
-                    reservedGridAmounts.merge(ingredient, 1, Integer::sum);
-                    found = true;
-                }
-            }
-
-            // Check the terminal once again, but this time for craftable items
-            if (!found) {
-                for (var stack : ingredient.getItems()) {
-                    if (isCraftable(stack)) {
-                        craftable.add(ingredient);
-                        found = true;
-                        break;
-                    }
-                }
-            }
-
-            if (!found) {
-                missing.add(ingredient);
-            }
-        }
-
-        return new TransferData(missing, craftable);
     }
 
     /**
