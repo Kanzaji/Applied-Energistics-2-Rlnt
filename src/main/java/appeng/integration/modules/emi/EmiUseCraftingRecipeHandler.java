@@ -85,6 +85,8 @@ public class EmiUseCraftingRecipeHandler<T extends CraftingTermMenu> extends Abs
         return Result.createSuccessful();
     }
 
+    // TODO: check against the client repo and inventory if all items fit
+    // TODO: actually transfer the items to the player inventory instead of the matrix
     private Result transferItemsToInventory(T menu, ResourceLocation recipeId, @Nullable Recipe<?> recipe, boolean doTransfer) {
         if (recipe == null) {
             return Result.createNotApplicable();
