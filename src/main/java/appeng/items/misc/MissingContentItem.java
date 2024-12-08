@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.jetbrains.annotations.Nullable;
 
+import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -55,7 +56,7 @@ public class MissingContentItem extends Item {
             AEKeyType keyType = null;
             try {
                 var keyTypeString = brokenDataTag.getString(AEKey.TYPE_FIELD);
-                keyType = AEKeyTypesInternal.getRegistry().get(new ResourceLocation(keyTypeString));
+                keyType = AEKeyTypesInternal.getRegistry().get(ResourceLocation.parse(keyTypeString));
                 if (keyType == null) {
                     missingId.append(" (").append(keyTypeString).append(")");
                 }
@@ -78,6 +79,11 @@ public class MissingContentItem extends Item {
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> lines, TooltipFlag advanced) {
         super.appendHoverText(stack, context, lines, advanced);
+
+        var error = stack.get(AEComponents.MISSING_CONTENT_ERROR);
+        if (error != null) {
+            lines.add(Component.literal(error).withStyle(ChatFormatting.GRAY));
+        }
     }
 
     public record BrokenStackInfo(Component displayName, @Nullable AEKeyType keyType, long amount) {

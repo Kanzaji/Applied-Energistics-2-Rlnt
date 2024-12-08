@@ -7,7 +7,6 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 
 import org.joml.Vector3f;
-import org.lwjgl.opengl.GL11;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LightTexture;
@@ -36,7 +35,7 @@ public final class InWorldAnnotationRenderer {
                     .setShaderState(RenderType.RENDERTYPE_TRANSLUCENT_SHADER)
                     .setTextureState(RenderStateShard.BLOCK_SHEET_MIPPED)
                     .setTransparencyState(RenderStateShard.TRANSLUCENT_TRANSPARENCY)
-                    .setDepthTestState(new RenderStateShard.DepthTestStateShard(">", GL11.GL_GREATER))
+                    .setDepthTestState(RenderStateShard.GREATER_DEPTH_TEST)
                     .setWriteMaskState(RenderStateShard.COLOR_WRITE)
                     .createCompositeState(false));
 
@@ -277,11 +276,10 @@ public final class InWorldAnnotationRenderer {
             int color,
             Vector3f bottomLeft,
             float u, float v) {
-        consumer.vertex(bottomLeft.x, bottomLeft.y, bottomLeft.z)
-                .color(color)
-                .uv(u, v)
-                .uv2(LightTexture.FULL_BRIGHT)
-                .normal(faceNormal.x(), faceNormal.y(), faceNormal.z())
-                .endVertex();
+        consumer.addVertex(bottomLeft.x, bottomLeft.y, bottomLeft.z)
+                .setColor(color)
+                .setUv(u, v)
+                .setLight(LightTexture.FULL_BRIGHT)
+                .setNormal(faceNormal.x(), faceNormal.y(), faceNormal.z());
     }
 }

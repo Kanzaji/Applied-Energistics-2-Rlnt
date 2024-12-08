@@ -59,7 +59,7 @@ import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.upgrades.UpgradeInventories;
 import appeng.api.util.AECableType;
-import appeng.blockentity.grid.AENetworkInvBlockEntity;
+import appeng.blockentity.grid.AENetworkedInvBlockEntity;
 import appeng.client.render.crafting.AssemblerAnimationStatus;
 import appeng.core.AELog;
 import appeng.core.AppEng;
@@ -75,7 +75,7 @@ import appeng.util.inv.CombinedInternalInventory;
 import appeng.util.inv.FilteredInternalInventory;
 import appeng.util.inv.filter.IAEItemFilter;
 
-public class MolecularAssemblerBlockEntity extends AENetworkInvBlockEntity
+public class MolecularAssemblerBlockEntity extends AENetworkedInvBlockEntity
         implements IUpgradeableObject, IGridTickable, ICraftingMachine, IPowerChannelState {
 
     /**
@@ -205,7 +205,7 @@ public class MolecularAssemblerBlockEntity extends AENetworkInvBlockEntity
             this.craftingInv.setItem(x, this.gridInv.getStackInSlot(x));
         }
 
-        return !this.myPlan.assemble(this.craftingInv, this.getLevel()).isEmpty();
+        return !this.myPlan.assemble(this.craftingInv.asCraftInput(), this.getLevel()).isEmpty();
     }
 
     @Override
@@ -423,18 +423,37 @@ public class MolecularAssemblerBlockEntity extends AENetworkInvBlockEntity
                 this.craftingInv.setItem(x, this.gridInv.getStackInSlot(x));
             }
 
+            var positionedInput = craftingInv.asPositionedCraftInput();
+            var craftinginput = positionedInput.input();
+
             this.progress = 0;
-            final ItemStack output = this.myPlan.assemble(this.craftingInv, this.getLevel());
+            final ItemStack output = this.myPlan.assemble(craftinginput, this.getLevel());
             if (!output.isEmpty()) {
+                output.onCraftedBySystem(level);
                 CraftingEvent.fireAutoCraftingEvent(getLevel(), this.myPlan, output, this.craftingInv);
 
                 // pushOut might reset the plan back to null, so get the remaining items before
-                var craftingRemainders = this.myPlan.getRemainingItems(this.craftingInv);
+                var craftingRemainders = this.myPlan.getRemainingItems(craftinginput);
 
                 this.pushOut(output.copy());
 
-                for (int x = 0; x < this.craftingInv.getContainerSize(); x++) {
-                    this.gridInv.setItemDirect(x, craftingRemainders.get(x));
+                int craftingInputLeft = positionedInput.left();
+                int craftingInputTop = positionedInput.top();
+
+                // Clear out the rows/cols that are in the margin
+                for (int y = 0; y < craftingInv.getHeight(); y++) {
+                    for (int x = 0; x < craftingInv.getWidth(); x++) {
+                        if (y < craftingInputTop || x < craftingInputLeft) {
+                            int idx = x + y * craftingInv.getWidth();
+                            gridInv.setItemDirect(idx, ItemStack.EMPTY);
+                        }
+                    }
+                }
+                for (int y = 0; y < craftinginput.height(); y++) {
+                    for (int x = 0; x < craftinginput.width(); x++) {
+                        int idx = x + craftingInputLeft + (y + craftingInputTop) * craftingInv.getWidth();
+                        gridInv.setItemDirect(idx, craftingRemainders.get(x + y * craftinginput.width()));
+                    }
                 }
 
                 if (this.patternInv.isEmpty()) {

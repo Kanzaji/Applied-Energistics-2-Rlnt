@@ -29,6 +29,7 @@ import net.minecraft.world.level.Level;
 
 import appeng.api.ids.AEComponents;
 import appeng.core.definitions.AEItems;
+import appeng.recipes.AERecipeTypes;
 import appeng.recipes.handlers.InscriberProcessType;
 import appeng.recipes.handlers.InscriberRecipe;
 
@@ -45,15 +46,15 @@ public final class InscriberRecipes {
      * Returns an unmodifiable view of all registered inscriber recipes.
      */
     public static Iterable<RecipeHolder<InscriberRecipe>> getRecipes(Level level) {
-        return level.getRecipeManager().byType(InscriberRecipe.TYPE);
+        return level.getRecipeManager().byType(AERecipeTypes.INSCRIBER);
     }
 
     @Nullable
     public static InscriberRecipe findRecipe(Level level, ItemStack input, ItemStack plateA, ItemStack plateB,
             boolean supportNamePress) {
         if (supportNamePress) {
-            boolean isNameA = AEItems.NAME_PRESS.isSameAs(plateA);
-            boolean isNameB = AEItems.NAME_PRESS.isSameAs(plateB);
+            boolean isNameA = AEItems.NAME_PRESS.is(plateA);
+            boolean isNameB = AEItems.NAME_PRESS.is(plateB);
 
             if (isNameA && isNameB || isNameA && plateB.isEmpty()) {
                 return makeNamePressRecipe(input, plateA, plateB);

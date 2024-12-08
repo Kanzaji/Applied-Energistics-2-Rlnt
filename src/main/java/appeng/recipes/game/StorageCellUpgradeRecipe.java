@@ -11,10 +11,10 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.inventory.CraftingContainer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingBookCategory;
+import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.CustomRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeSerializer;
@@ -82,11 +82,11 @@ public class StorageCellUpgradeRecipe extends CustomRecipe {
     }
 
     @Override
-    public boolean matches(CraftingContainer container, Level level) {
+    public boolean matches(CraftingInput container, Level level) {
         var cellsFound = 0;
         var componentsFound = 0;
 
-        for (int i = 0; i < container.getContainerSize(); i++) {
+        for (int i = 0; i < container.size(); i++) {
             var stack = container.getItem(i);
             if (!stack.isEmpty()) {
                 if (stack.is(inputCell)) {
@@ -113,11 +113,11 @@ public class StorageCellUpgradeRecipe extends CustomRecipe {
     }
 
     @Override
-    public ItemStack assemble(CraftingContainer container, HolderLookup.Provider registries) {
+    public ItemStack assemble(CraftingInput container, HolderLookup.Provider registries) {
         ItemStack foundCell = ItemStack.EMPTY;
         var componentsFound = 0;
 
-        for (int i = 0; i < container.getContainerSize(); i++) {
+        for (int i = 0; i < container.size(); i++) {
             var stack = container.getItem(i);
             if (!stack.isEmpty()) {
                 if (stack.is(inputCell)) {
@@ -142,11 +142,12 @@ public class StorageCellUpgradeRecipe extends CustomRecipe {
         }
     }
 
-    public NonNullList<ItemStack> getRemainingItems(CraftingContainer inv) {
-        var remainder = NonNullList.withSize(inv.getContainerSize(), ItemStack.EMPTY);
+    @Override
+    public NonNullList<ItemStack> getRemainingItems(CraftingInput input) {
+        var remainder = NonNullList.withSize(input.size(), ItemStack.EMPTY);
 
         for (int i = 0; i < remainder.size(); ++i) {
-            var stack = inv.getItem(i);
+            var stack = input.getItem(i);
             if (stack.is(inputCell)) {
                 // We replace the cell with the component since it is unstackable and forced to be in match
                 remainder.set(i, new ItemStack(resultComponent));

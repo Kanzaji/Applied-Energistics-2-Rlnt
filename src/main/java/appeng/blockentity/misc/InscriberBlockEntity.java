@@ -38,6 +38,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 
 import appeng.api.config.Actionable;
+import appeng.api.config.InscriberInputCapacity;
 import appeng.api.config.PowerMultiplier;
 import appeng.api.config.Setting;
 import appeng.api.config.Settings;
@@ -59,7 +60,7 @@ import appeng.api.upgrades.UpgradeInventories;
 import appeng.api.util.AECableType;
 import appeng.api.util.IConfigManager;
 import appeng.api.util.IConfigurableObject;
-import appeng.blockentity.grid.AENetworkPowerBlockEntity;
+import appeng.blockentity.grid.AENetworkedPoweredBlockEntity;
 import appeng.core.definitions.AEBlocks;
 import appeng.core.definitions.AEItems;
 import appeng.core.settings.TickRates;
@@ -76,7 +77,7 @@ import appeng.util.inv.filter.IAEItemFilter;
  * @version rv2
  * @since rv0
  */
-public class InscriberBlockEntity extends AENetworkPowerBlockEntity
+public class InscriberBlockEntity extends AENetworkedPoweredBlockEntity
         implements IGridTickable, IUpgradeableObject, IConfigurableObject {
     private static final int MAX_PROCESSING_STEPS = 200;
 
@@ -128,7 +129,7 @@ public class InscriberBlockEntity extends AENetworkPowerBlockEntity
         this.configManager = IConfigManager.builder(this::onConfigChanged)
                 .registerSetting(Settings.INSCRIBER_SEPARATE_SIDES, YesNo.NO)
                 .registerSetting(Settings.AUTO_EXPORT, YesNo.NO)
-                .registerSetting(Settings.INSCRIBER_BUFFER_SIZE, YesNo.YES)
+                .registerSetting(Settings.INSCRIBER_INPUT_CAPACITY, InscriberInputCapacity.SIXTY_FOUR)
                 .build();
 
         var automationFilter = new AutomationFilter();
@@ -159,6 +160,10 @@ public class InscriberBlockEntity extends AENetworkPowerBlockEntity
         super.loadTag(data, registries);
         this.upgrades.readFromNBT(data, "upgrades", registries);
         this.configManager.readFromNBT(data, registries);
+        // TODO 1.22: Remove compat with old format.
+        if ("NO".equals(data.getString("inscriber_buffer_size"))) {
+            this.configManager.putSetting(Settings.INSCRIBER_INPUT_CAPACITY, InscriberInputCapacity.FOUR);
+        }
 
         // Update stack tracker
         lastStacks.put(topItemHandler, topItemHandler.getStackInSlot(0));
@@ -458,16 +463,11 @@ public class InscriberBlockEntity extends AENetworkPowerBlockEntity
             invalidateCapabilities();
         }
 
-        if (setting == Settings.INSCRIBER_BUFFER_SIZE) {
-            if (configManager.getSetting(Settings.INSCRIBER_BUFFER_SIZE) == YesNo.YES) {
-                topItemHandler.setMaxStackSize(0, 64);
-                sideItemHandler.setMaxStackSize(0, 64);
-                bottomItemHandler.setMaxStackSize(0, 64);
-            } else {
-                topItemHandler.setMaxStackSize(0, 4);
-                sideItemHandler.setMaxStackSize(0, 4);
-                bottomItemHandler.setMaxStackSize(0, 4);
-            }
+        if (setting == Settings.INSCRIBER_INPUT_CAPACITY) {
+            var capacity = configManager.getSetting(Settings.INSCRIBER_INPUT_CAPACITY).capacity;
+            topItemHandler.setMaxStackSize(0, capacity);
+            sideItemHandler.setMaxStackSize(0, capacity);
+            bottomItemHandler.setMaxStackSize(0, capacity);
         }
 
         saveChanges();
@@ -535,13 +535,13 @@ public class InscriberBlockEntity extends AENetworkPowerBlockEntity
 
             // always allow name press
             if (inv == topItemHandler || inv == bottomItemHandler) {
-                if (AEItems.NAME_PRESS.isSameAs(stack)) {
+                if (AEItems.NAME_PRESS.is(stack)) {
                     return true;
                 }
             }
 
-            if (inv == sideItemHandler && (AEItems.NAME_PRESS.isSameAs(topItemHandler.getStackInSlot(0))
-                    || AEItems.NAME_PRESS.isSameAs(bottomItemHandler.getStackInSlot(0)))) {
+            if (inv == sideItemHandler && (AEItems.NAME_PRESS.is(topItemHandler.getStackInSlot(0))
+                    || AEItems.NAME_PRESS.is(bottomItemHandler.getStackInSlot(0)))) {
                 // can always rename anything
                 return true;
             }

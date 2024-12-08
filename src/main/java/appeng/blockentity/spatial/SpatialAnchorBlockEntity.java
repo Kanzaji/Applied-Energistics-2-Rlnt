@@ -55,13 +55,13 @@ import appeng.api.util.AEColor;
 import appeng.api.util.DimensionalBlockPos;
 import appeng.api.util.IConfigManager;
 import appeng.api.util.IConfigurableObject;
-import appeng.blockentity.grid.AENetworkBlockEntity;
+import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.client.render.overlay.IOverlayDataSource;
 import appeng.client.render.overlay.OverlayManager;
 import appeng.me.service.StatisticsService;
 import appeng.server.services.ChunkLoadingService;
 
-public class SpatialAnchorBlockEntity extends AENetworkBlockEntity
+public class SpatialAnchorBlockEntity extends AENetworkedBlockEntity
         implements IGridTickable, IConfigurableObject, IOverlayDataSource {
 
     static {
@@ -338,12 +338,10 @@ public class SpatialAnchorBlockEntity extends AENetworkBlockEntity
         ServerLevel level = this.getServerLevel();
         boolean forced = ChunkLoadingService.getInstance().forceChunk(level, this.getBlockPos(), chunkPos);
 
-        if (forced) {
-            this.chunks.add(chunkPos);
+        if (forced && this.chunks.add(chunkPos)) {
+            this.updatePowerConsumption();
+            markForClientUpdate();
         }
-
-        this.updatePowerConsumption();
-        this.markForUpdate();
 
         return forced;
     }
@@ -352,12 +350,10 @@ public class SpatialAnchorBlockEntity extends AENetworkBlockEntity
         ServerLevel level = this.getServerLevel();
         boolean removed = ChunkLoadingService.getInstance().releaseChunk(level, this.getBlockPos(), chunkPos);
 
-        if (removed && remove) {
-            this.chunks.remove(chunkPos);
+        if (removed && remove && this.chunks.remove(chunkPos)) {
+            this.updatePowerConsumption();
+            markForClientUpdate();
         }
-
-        this.updatePowerConsumption();
-        this.markForUpdate();
 
         return removed;
     }

@@ -1,7 +1,7 @@
 package appeng.integration.modules.itemlists;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.Tesselator;
 
 import org.joml.Matrix4fStack;
@@ -30,6 +30,12 @@ public final class FluidBlockRendering {
     }
 
     public static void render(GuiGraphics guiGraphics, Fluid fluid, int x, int y, int width, int height) {
+        RenderSystem.runAsFancy(() -> {
+            renderInFancy(guiGraphics, fluid, x, y, width, height);
+        });
+    }
+
+    public static void renderInFancy(GuiGraphics guiGraphics, Fluid fluid, int x, int y, int width, int height) {
         var fluidState = fluid.defaultFluidState();
 
         var blockRenderer = Minecraft.getInstance().getBlockRenderer();
@@ -53,17 +59,16 @@ public final class FluidBlockRendering {
 
         setupOrthographicProjection(worldMatStack);
 
-        var tesselator = Tesselator.getInstance();
-        BufferBuilder builder = tesselator.getBuilder();
-        builder.begin(renderType.mode(), renderType.format());
+        var builder = Tesselator.getInstance().begin(renderType.mode(), renderType.format());
         blockRenderer.renderLiquid(
                 BlockPos.ZERO,
                 new FakeWorld(fluidState),
                 builder,
                 fluidState.createLegacyBlock(),
                 fluidState);
-        if (builder.building()) {
-            tesselator.end();
+        var meshData = builder.build();
+        if (meshData != null) {
+            BufferUploader.drawWithShader(meshData);
         }
 
         // Reset the render state and return to the previous modelview matrix

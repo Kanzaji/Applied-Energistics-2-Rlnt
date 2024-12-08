@@ -1,6 +1,7 @@
 package appeng.client.guidebook.hotkey;
 
 import java.util.List;
+import java.util.Objects;
 
 import com.google.common.base.Strings;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -14,6 +15,7 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
@@ -26,7 +28,6 @@ import appeng.client.guidebook.GuidebookText;
 import appeng.client.guidebook.PageAnchor;
 import appeng.client.guidebook.indices.ItemIndex;
 import appeng.client.guidebook.screen.GuideScreen;
-import appeng.core.AEConfig;
 import appeng.core.AppEngClient;
 
 /**
@@ -43,8 +44,8 @@ public final class OpenGuideHotkey {
 
     private static boolean newTick = true;
 
-    // The last itemstack the tooltip was being shown for
-    private static ItemStack lastStack;
+    // The previous item the tooltip was being shown for
+    private static ResourceLocation previousItemId;
     @Nullable
     private static PageAnchor guidebookPage;
     // Full ticks since the button was held (reduces slowly when not held)
@@ -56,13 +57,9 @@ public final class OpenGuideHotkey {
     }
 
     public static void init() {
-        if (AEConfig.instance().isGuideHotkeyEnabled()) {
-            NeoForge.EVENT_BUS.addListener(
-                    (ItemTooltipEvent evt) -> handleTooltip(evt.getItemStack(), evt.getFlags(), evt.getToolTip()));
-            NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post evt) -> newTick = true);
-        } else {
-            LOG.info("AE2 guide hotkey is disabled via config.");
-        }
+        NeoForge.EVENT_BUS.addListener(
+                (ItemTooltipEvent evt) -> handleTooltip(evt.getItemStack(), evt.getFlags(), evt.getToolTip()));
+        NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post evt) -> newTick = true);
     }
 
     private static void handleTooltip(ItemStack itemStack, TooltipFlag tooltipFlag, List<Component> lines) {
@@ -93,9 +90,9 @@ public final class OpenGuideHotkey {
         // Compute the progress value between [0,1]
         float progress = ticksKeyHeld;
         if (holding) {
-            progress += minecraft.getFrameTime();
+            progress += minecraft.getTimer().getRealtimeDeltaTicks();
         } else {
-            progress -= minecraft.getFrameTime();
+            progress -= minecraft.getTimer().getRealtimeDeltaTicks();
         }
         progress /= (float) TICKS_TO_OPEN;
         var component = makeProgressBar(Mth.clamp(progress, 0, 1));
@@ -133,15 +130,16 @@ public final class OpenGuideHotkey {
     }
 
     private static void update(ItemStack itemStack) {
-        if (itemStack != lastStack) {
-            lastStack = itemStack;
+        var itemId = itemStack.getItemHolder()
+                .unwrapKey()
+                .map(ResourceKey::location)
+                .orElse(null);
+
+        if (!Objects.equals(itemId, previousItemId)) {
+            previousItemId = itemId;
             guidebookPage = null;
             ticksKeyHeld = 0;
 
-            var itemId = itemStack.getItemHolder()
-                    .unwrapKey()
-                    .map(ResourceKey::location)
-                    .orElse(null);
             if (itemId == null) {
                 return;
             }

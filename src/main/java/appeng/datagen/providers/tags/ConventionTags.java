@@ -49,6 +49,10 @@ public final class ConventionTags {
     private ConventionTags() {
     }
 
+    /**
+     * This tag contains all data component types that should be cleared from a memory card when it is
+     * shift+right-clicked.
+     */
     public static final TagKey<DataComponentType<?>> EXPORTED_SETTINGS = net.minecraft.tags.TagKey.create(
             Registries.DATA_COMPONENT_TYPE,
             AppEng.makeId("exported_settings"));
@@ -73,22 +77,19 @@ public final class ConventionTags {
     // Includes synthetic/purified
     public static final TagKey<Item> ALL_NETHER_QUARTZ = tag("ae2:all_nether_quartz");
     public static final TagKey<Item> NETHER_QUARTZ = Tags.Items.GEMS_QUARTZ;
-    public static final TagKey<Item> NETHER_QUARTZ_ORE = Tags.Items.ORES_QUARTZ;
 
     // Includes synthetic/purified
     public static final TagKey<Item> ALL_FLUIX = tag("ae2:all_fluix");
     public static final TagKey<Item> FLUIX_DUST = tag("c:dusts/fluix");
     public static final TagKey<Item> FLUIX_CRYSTAL = tag("c:gems/fluix");
 
-    public static final TagKey<Item> COPPER_INGOT = tag("c:ingots/copper");
+    public static final TagKey<Item> COPPER_INGOT = Tags.Items.INGOTS_COPPER;
 
     public static final TagKey<Item> GOLD_NUGGET = Tags.Items.NUGGETS_GOLD;
     public static final TagKey<Item> GOLD_INGOT = Tags.Items.INGOTS_GOLD;
-    public static final TagKey<Item> GOLD_ORE = Tags.Items.ORES_GOLD;
 
     public static final TagKey<Item> IRON_NUGGET = Tags.Items.NUGGETS_IRON;
     public static final TagKey<Item> IRON_INGOT = Tags.Items.INGOTS_IRON;
-    public static final TagKey<Item> IRON_ORE = Tags.Items.ORES_IRON;
 
     public static final TagKey<Item> DIAMOND = Tags.Items.GEMS_DIAMOND;
     public static final TagKey<Item> REDSTONE = Tags.Items.DUSTS_REDSTONE;
@@ -97,11 +98,12 @@ public final class ConventionTags {
     public static final TagKey<Item> ENDER_PEARL = Tags.Items.ENDER_PEARLS;
     public static final TagKey<Item> ENDER_PEARL_DUST = tag("c:dusts/ender_pearl");
 
+    public static final TagKey<Item> SKY_STONE_DUST = tag("c:dusts/sky_stone");
+
     public static final TagKey<Item> WOOD_STICK = Tags.Items.RODS_WOODEN;
     public static final TagKey<Item> CHEST = Tags.Items.CHESTS_WOODEN;
 
     public static final TagKey<Item> STONE = Tags.Items.STONES;
-    public static final TagKey<Item> COBBLESTONE = Tags.Items.COBBLESTONES;
     public static final TagKey<Item> GLASS = Tags.Items.GLASS_BLOCKS;
     public static final TagKey<Block> GLASS_BLOCK = Tags.Blocks.GLASS_BLOCKS;
 
@@ -121,6 +123,7 @@ public final class ConventionTags {
     public static final TagKey<Item> QUARTZ_WRENCH = tag("ae2:quartz_wrench");
     public static final TagKey<Item> QUARTZ_KNIFE = tag("ae2:knife");
     public static final TagKey<Item> PAINT_BALLS = tag("ae2:paint_balls");
+    public static final TagKey<Item> LUMEN_PAINT_BALLS = tag("ae2:lumen_paint_balls");
     public static final TagKey<Item> INSCRIBER_PRESSES = tag("ae2:inscriber_presses");
     /**
      * Items that can be used in recipes to remove color from colored items.
@@ -128,12 +131,12 @@ public final class ConventionTags {
     public static final TagKey<Item> CAN_REMOVE_COLOR = tag("ae2:can_remove_color");
 
     // Budding stuff
-    public static final TagKey<Item> BUDDING_BLOCKS = tag("c:budding");
-    public static final TagKey<Item> BUDS = tag("c:buds");
-    public static final TagKey<Item> CLUSTERS = tag("c:clusters");
-    public static final TagKey<Block> BUDDING_BLOCKS_BLOCKS = blockTag("c:budding");
-    public static final TagKey<Block> BUDS_BLOCKS = blockTag("c:buds");
-    public static final TagKey<Block> CLUSTERS_BLOCKS = blockTag("c:clusters");
+    public static final TagKey<Item> BUDDING_BLOCKS = Tags.Items.BUDDING_BLOCKS;
+    public static final TagKey<Item> BUDS = Tags.Items.BUDS;
+    public static final TagKey<Item> CLUSTERS = Tags.Items.CLUSTERS;
+    public static final TagKey<Block> BUDDING_BLOCKS_BLOCKS = Tags.Blocks.BUDDING_BLOCKS;
+    public static final TagKey<Block> BUDS_BLOCKS = Tags.Blocks.BUDS;
+    public static final TagKey<Block> CLUSTERS_BLOCKS = Tags.Blocks.CLUSTERS;
 
     // For Growth Accelerator
     public static final TagKey<Block> CROPS = BlockTags.CROPS;
@@ -142,7 +145,7 @@ public final class ConventionTags {
     /**
      * Platform tags for blocks that should not be moved, i.e. some pipes, chunk loaders, etc...
      */
-    public static final TagKey<Block> IMMOVABLE_BLOCKS = blockTag("c:relocation_not_supported");
+    public static final TagKey<Block> IMMOVABLE_BLOCKS = Tags.Blocks.RELOCATION_NOT_SUPPORTED;
 
     /**
      * For Worldgen Biomes
@@ -152,18 +155,12 @@ public final class ConventionTags {
     /**
      * Used to identify items that act as wrenches.
      */
-    public static final TagKey<Item> WRENCH = tag("c:tools/wrenches");
+    public static final TagKey<Item> WRENCH = tag("c:tools/wrench");
 
     public static final Map<DyeColor, TagKey<Item>> DYES = Arrays.stream(DyeColor.values())
             .collect(Collectors.toMap(
                     Function.identity(),
                     dye -> tag("c:dyes/" + dye.getSerializedName())));
-
-    public static final TagKey<Block> STAINED_GLASS_BLOCK = Tags.Blocks.GLASS_BLOCKS_TINTED;
-
-    public static final TagKey<Block> TERRACOTTA_BLOCK = blockTag("c:terracotta");
-
-    public static final TagKey<Item> STORAGE_BLOCKS = Tags.Items.STORAGE_BLOCKS;
 
     public static final TagKey<Item> CURIOS = tag("curios:curio");
 
@@ -172,11 +169,11 @@ public final class ConventionTags {
     }
 
     private static TagKey<Item> tag(String name) {
-        return net.minecraft.tags.TagKey.create(Registries.ITEM, new ResourceLocation(name));
+        return net.minecraft.tags.TagKey.create(Registries.ITEM, ResourceLocation.parse(name));
     }
 
     private static TagKey<Block> blockTag(String name) {
-        return net.minecraft.tags.TagKey.create(Registries.BLOCK, new ResourceLocation(name));
+        return net.minecraft.tags.TagKey.create(Registries.BLOCK, ResourceLocation.parse(name));
     }
 
 }

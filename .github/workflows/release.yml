@@ -18,25 +18,27 @@ jobs:
       VERSION: ${{ steps.prepare_artifact_metadata.outputs.VERSION }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+      - run: git fetch origin --tags
+        shell: bash
       - uses: ./.github/actions/gradle-setup
       - name: Build with Gradle
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew build -x check --no-daemon --max-workers 1
+        run: ./gradlew printProjectVersion build publish -x check --max-workers 1
       - name: Prepare artifact metadata. Note that VERSION is set by the gradle script.
         id: prepare_artifact_metadata
         run: |
-          echo ARTIFACT_PATH=./build/libs/appliedenergistics2-neoforge-${VERSION}.jar >> $GITHUB_OUTPUT
-          echo ARTIFACT_NAME=appliedenergistics2-neoforge-${VERSION}.jar >> $GITHUB_OUTPUT
-          echo JAVADOC_PATH=./build/libs/appliedenergistics2-neoforge-${VERSION}-javadoc.jar >> $GITHUB_OUTPUT
-          echo JAVADOC_NAME=appliedenergistics2-neoforge-${VERSION}-javadoc.jar >> $GITHUB_OUTPUT
-          echo API_PATH=./build/libs/appliedenergistics2-neoforge-${VERSION}-api.jar >> $GITHUB_OUTPUT
-          echo API_NAME=appliedenergistics2-neoforge-${VERSION}-api.jar >> $GITHUB_OUTPUT
+          echo ARTIFACT_PATH=./build/libs/appliedenergistics2-${VERSION}.jar >> $GITHUB_OUTPUT
+          echo ARTIFACT_NAME=appliedenergistics2-${VERSION}.jar >> $GITHUB_OUTPUT
+          echo JAVADOC_PATH=./build/libs/appliedenergistics2-${VERSION}-javadoc.jar >> $GITHUB_OUTPUT
+          echo JAVADOC_NAME=appliedenergistics2-${VERSION}-javadoc.jar >> $GITHUB_OUTPUT
+          echo API_PATH=./build/libs/appliedenergistics2-${VERSION}-api.jar >> $GITHUB_OUTPUT
+          echo API_NAME=appliedenergistics2-${VERSION}-api.jar >> $GITHUB_OUTPUT
           echo VERSION=${VERSION} >> $GITHUB_OUTPUT
       - name: Archive build results
         # It is important to  archive .gradle as well since gradle stores the incremental build state there
-        run: tar -I zstd -cf build.tar.zst .gradle build src/generated
+        run: tar -I zstd -cf build.tar.zst build/libs build/repo
       - name: Upload build and gradle folders
         uses: actions/upload-artifact@v4
         with:
@@ -88,9 +90,9 @@ jobs:
     name: Deploy to Github Packages
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      packages: write
     steps:
-      - uses: actions/checkout@v3
-      - uses: ./.github/actions/gradle-setup
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
@@ -98,11 +100,14 @@ jobs:
       - name: Unpack build artifact
         run: tar axf build.tar.zst
       - name: Validate artifacts exist
-        run: test -d ./build && test -d ./.gradle
+        run: test -d ./build
       - name: Publish to Github Packages
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew publishMavenPublicationToGitHubPackagesRepository --no-daemon --max-workers 1
+        uses: AppliedEnergistics/maven-publish-action@main
+        with:
+          local-repository-path: build/repo
+          remote-repository-url: https://maven.pkg.github.com/AppliedEnergistics/Applied-Energistics-2/
+          remote-repository-username: ${{ github.actor }}
+          remote-repository-password: ${{ github.token }}
 
   deploy-curseforge:
     name: Deploy to Curseforge
@@ -127,7 +132,7 @@ jobs:
             jade(optional){modrinth:nvQzSEkH}{curseforge:324717}
             wthit(optional){modrinth:6AQIaxuO}{curseforge:440979}
             rei(optional){modrinth:nfn13YXA}{curseforge:310111}
-            jei(optional){modrinth:u6dRKJwZ}{curseforge:238222}
+            emi(optional){modrinth:fRiHVvU7}{curseforge:580555}
             optifine(incompatible)
             theoneprobe(optional){modrinth:Eyw0UxEx}{curseforge:245211}
           curseforge-id: 223794
@@ -139,8 +144,6 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: ./.github/actions/gradle-setup
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
@@ -148,12 +151,14 @@ jobs:
       - name: Unpack build artifact
         run: tar axf build.tar.zst
       - name: Validate artifacts exist
-        run: test -d ./build && test -d ./.gradle
+        run: test -d ./build
       - name: Publish to Modmaven
-        env:
-          MODMAVEN_USER: ${{ secrets.MODMAVEN_USER }}
-          MODMAVEN_PASSWORD: ${{ secrets.MODMAVEN_PASSWORD }}
-        run: ./gradlew publishMavenPublicationToModmavenRepository --no-daemon --max-workers 1
+        uses: AppliedEnergistics/maven-publish-action@main
+        with:
+          local-repository-path: build/repo
+          remote-repository-url: https://modmaven.dev/artifactory/local-releases/
+          remote-repository-username: ${{ secrets.MODMAVEN_USER }}
+          remote-repository-password: ${{ secrets.MODMAVEN_PASSWORD }}
 
   deploy-modrinth:
     name: Deploy to Modrinth
@@ -178,7 +183,7 @@ jobs:
             jade(optional){modrinth:nvQzSEkH}{curseforge:324717}
             wthit(optional){modrinth:6AQIaxuO}{curseforge:440979}
             rei(optional){modrinth:nfn13YXA}{curseforge:310111}
-            jei(optional){modrinth:u6dRKJwZ}{curseforge:238222}
+            emi(optional){modrinth:fRiHVvU7}{curseforge:580555}
             optifine(incompatible)
             theoneprobe(optional){modrinth:Eyw0UxEx}{curseforge:245211}
           modrinth-id: XxWD5pD3

@@ -29,19 +29,19 @@ import net.minecraft.core.NonNullList;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.item.crafting.RecipeInput;
 import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.network.codec.NeoForgeStreamCodecs;
 
 import appeng.core.AppEng;
-import appeng.init.InitRecipeTypes;
+import appeng.recipes.AERecipeTypes;
 
-public class InscriberRecipe implements Recipe<Container> {
+public class InscriberRecipe implements Recipe<RecipeInput> {
 
     private static final Codec<InscriberProcessType> MODE_CODEC = Codec.stringResolver(
             mode -> switch (mode) {
@@ -71,9 +71,11 @@ public class InscriberRecipe implements Recipe<Container> {
             InscriberRecipe::getProcessType,
             InscriberRecipe::new);
 
+    @Deprecated(forRemoval = true, since = "1.21.1")
     public static final ResourceLocation TYPE_ID = AppEng.makeId("inscriber");
 
-    public static final RecipeType<InscriberRecipe> TYPE = InitRecipeTypes.register(TYPE_ID.toString());
+    @Deprecated(forRemoval = true, since = "1.21.1")
+    public static final RecipeType<InscriberRecipe> TYPE = AERecipeTypes.INSCRIBER;
 
     private final Ingredient middleInput;
     private final Ingredient topOptional;
@@ -95,12 +97,12 @@ public class InscriberRecipe implements Recipe<Container> {
     }
 
     @Override
-    public boolean matches(Container inv, Level level) {
+    public boolean matches(RecipeInput inv, Level level) {
         return false;
     }
 
     @Override
-    public ItemStack assemble(Container inv, HolderLookup.Provider registries) {
+    public ItemStack assemble(RecipeInput inv, HolderLookup.Provider registries) {
         return getResultItem(registries).copy();
     }
 

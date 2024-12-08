@@ -45,7 +45,7 @@ import appeng.api.movable.BlockEntityMoveStrategies;
 import appeng.api.movable.IBlockEntityMoveStrategy;
 import appeng.core.AELog;
 import appeng.core.definitions.AEBlocks;
-import appeng.server.services.compass.CompassService;
+import appeng.server.services.compass.ServerCompassService;
 import appeng.util.Platform;
 
 public class CachedPlane {
@@ -112,44 +112,49 @@ public class CachedPlane {
                 this.myChunks[cx][cz] = c;
 
                 // Make a copy of the BE list in the chunk. This allows us to immediately remove BE's we're moving.
-                var rawBlockEntities = new ArrayList<>(c.getBlockEntities().entrySet());
-                for (var entry : rawBlockEntities) {
-                    var blockEntity = entry.getValue();
-
-                    var pos = blockEntity.getBlockPos();
+                // We cannot simply copy the map entries since the map may reuse those if we remove entries.
+                var chunkBlockEntities = c.getBlockEntities().entrySet();
+                var blockEntities = new ArrayList<BlockEntity>(chunkBlockEntities.size());
+                for (var entity : chunkBlockEntities) {
+                    var pos = entity.getKey();
                     if (pos.getX() >= minX && pos.getX() <= maxX && pos.getY() >= minY && pos.getY() <= maxY
                             && pos.getZ() >= minZ && pos.getZ() <= maxZ) {
+                        blockEntities.add(entity.getValue());
+                    }
+                }
 
-                        // If the block entities containing block is blacklisted, it will be skipped
-                        // automatically later, so we have to avoid removing it here
-                        if (blockEntity.getBlockState().is(AETags.SPATIAL_BLACKLIST)) {
-                            continue;
-                        }
+                for (var blockEntity : blockEntities) {
+                    var pos = blockEntity.getBlockPos();
 
-                        var strategy = BlockEntityMoveStrategies.get(blockEntity);
-                        var savedData = strategy.beginMove(blockEntity, level.registryAccess());
-                        var section = c.getSection(c.getSectionIndex(entry.getKey().getY()));
+                    // If the block entities containing block is blacklisted, it will be skipped
+                    // automatically later, so we have to avoid removing it here
+                    if (blockEntity.getBlockState().is(AETags.SPATIAL_BLACKLIST)) {
+                        continue;
+                    }
 
-                        // Coordinate within the section
-                        int sx = entry.getKey().getX() & (LevelChunkSection.SECTION_WIDTH - 1);
-                        int sy = entry.getKey().getY() & (LevelChunkSection.SECTION_HEIGHT - 1);
-                        int sz = entry.getKey().getZ() & (LevelChunkSection.SECTION_WIDTH - 1);
-                        var state = section.getBlockState(sx, sy, sz);
+                    var strategy = BlockEntityMoveStrategies.get(blockEntity);
+                    var savedData = strategy.beginMove(blockEntity, level.registryAccess());
+                    var section = c.getSection(c.getSectionIndex(pos.getY()));
 
-                        if (savedData != null) {
-                            this.blockEntities.add(
-                                    new BlockEntityMoveRecord(strategy, blockEntity, savedData, entry.getKey(), state));
+                    // Coordinate within the section
+                    int sx = pos.getX() & (LevelChunkSection.SECTION_WIDTH - 1);
+                    int sy = pos.getY() & (LevelChunkSection.SECTION_HEIGHT - 1);
+                    int sz = pos.getZ() & (LevelChunkSection.SECTION_WIDTH - 1);
+                    var state = section.getBlockState(sx, sy, sz);
 
-                            // Set the state to AIR now since that prevents it from being resurrected recursively
-                            section.setBlockState(sx, sy, sz, Blocks.AIR.defaultBlockState());
-                            c.removeBlockEntity(entry.getKey());
+                    if (savedData != null) {
+                        this.blockEntities.add(
+                                new BlockEntityMoveRecord(strategy, blockEntity, savedData, pos, state));
+
+                        // Set the state to AIR now since that prevents it from being resurrected recursively
+                        section.setBlockState(sx, sy, sz, Blocks.AIR.defaultBlockState());
+                        c.removeBlockEntity(pos);
+                    } else {
+                        // don't skip air, just let the code replace it...
+                        if (state.isAir()) {
+                            level.removeBlock(pos, false);
                         } else {
-                            // don't skip air, just let the code replace it...
-                            if (state.isAir()) {
-                                level.removeBlock(pos, false);
-                            } else {
-                                this.myColumns[pos.getX() - minX][pos.getZ() - minZ].setSkip(pos.getY());
-                            }
+                            this.myColumns[pos.getX() - minX][pos.getZ() - minZ].setSkip(pos.getY());
                         }
                     }
                 }
@@ -337,7 +342,7 @@ public class CachedPlane {
 
                 final LevelChunk c = this.myChunks[x][z];
 
-                CompassService.updateArea(this.getLevel(), c);
+                ServerCompassService.updateArea(this.getLevel(), c);
 
                 var cdp = Platform.getFullChunkPacket(c);
                 level.getChunkSource().chunkMap.getPlayers(c.getPos(), false)

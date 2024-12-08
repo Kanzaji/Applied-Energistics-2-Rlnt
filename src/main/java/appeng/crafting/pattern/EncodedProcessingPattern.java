@@ -23,8 +23,9 @@ public record EncodedProcessingPattern(
     }
 
     public static final Codec<EncodedProcessingPattern> CODEC = RecordCodecBuilder.create(builder -> builder.group(
-            GenericStack.NULLABLE_LIST_CODEC.fieldOf("sparseInputs").forGetter(EncodedProcessingPattern::sparseInputs),
-            GenericStack.NULLABLE_LIST_CODEC.fieldOf("sparseOutputs")
+            GenericStack.FAULT_TOLERANT_NULLABLE_LIST_CODEC.fieldOf("sparseInputs")
+                    .forGetter(EncodedProcessingPattern::sparseInputs),
+            GenericStack.FAULT_TOLERANT_NULLABLE_LIST_CODEC.fieldOf("sparseOutputs")
                     .forGetter(EncodedProcessingPattern::sparseOutputs))
             .apply(builder, EncodedProcessingPattern::new));
 
@@ -38,6 +39,6 @@ public record EncodedProcessingPattern(
 
     public boolean containsMissingContent() {
         return Stream.concat(sparseInputs.stream(), sparseOutputs.stream())
-                .anyMatch(stack -> stack != null && AEItems.MISSING_CONTENT.isSameAs(stack.what()));
+                .anyMatch(stack -> stack != null && AEItems.MISSING_CONTENT.is(stack.what()));
     }
 }

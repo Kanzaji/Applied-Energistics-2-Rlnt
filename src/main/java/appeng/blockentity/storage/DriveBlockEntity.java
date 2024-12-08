@@ -54,7 +54,7 @@ import appeng.api.storage.StorageCells;
 import appeng.api.storage.cells.CellState;
 import appeng.api.storage.cells.StorageCell;
 import appeng.api.util.AECableType;
-import appeng.blockentity.grid.AENetworkInvBlockEntity;
+import appeng.blockentity.grid.AENetworkedInvBlockEntity;
 import appeng.blockentity.inventory.AppEngCellInventory;
 import appeng.client.render.model.DriveModelData;
 import appeng.core.AELog;
@@ -68,7 +68,7 @@ import appeng.menu.locator.MenuLocators;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.filter.IAEItemFilter;
 
-public class DriveBlockEntity extends AENetworkInvBlockEntity
+public class DriveBlockEntity extends AENetworkedInvBlockEntity
         implements IChestOrDrive, IPriorityHost, IStorageProvider {
 
     private final AppEngCellInventory inv = new AppEngCellInventory(this, getCellCount());
@@ -184,7 +184,7 @@ public class DriveBlockEntity extends AENetworkInvBlockEntity
             var tagName = "cell" + i;
             if (data.contains(tagName, Tag.TAG_COMPOUND)) {
                 var cellData = data.getCompound(tagName);
-                var id = new ResourceLocation(cellData.getString("id"));
+                var id = ResourceLocation.parse(cellData.getString("id"));
                 var cellStateName = cellData.getString("state");
 
                 clientSideCellItems[i] = BuiltInRegistries.ITEM.getOptional(id).orElse(null);

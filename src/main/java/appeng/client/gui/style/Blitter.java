@@ -21,7 +21,6 @@ package appeng.client.gui.style;
 import java.util.Objects;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.Tesselator;
@@ -70,6 +69,7 @@ public final class Blitter {
     private Rect2i destRect = new Rect2i(0, 0, 0, 0);
     private boolean blending = true;
     private TextureTransform transform = TextureTransform.NONE;
+    private int zOffset;
 
     Blitter(ResourceLocation texture, int referenceWidth, int referenceHeight) {
         this.texture = texture;
@@ -102,7 +102,7 @@ public final class Blitter {
      * Creates a blitter where the source rectangle is in relation to a texture of the given size.
      */
     public static Blitter texture(String file, int referenceWidth, int referenceHeight) {
-        return new Blitter(new ResourceLocation(AppEng.MOD_ID, "textures/" + file), referenceWidth, referenceHeight);
+        return new Blitter(AppEng.makeId("textures/" + file), referenceWidth, referenceHeight);
     }
 
     /**
@@ -262,6 +262,11 @@ public final class Blitter {
         return color(r, g, b);
     }
 
+    public Blitter zOffset(int offset) {
+        this.zOffset = offset;
+        return this;
+    }
+
     public void blit(GuiGraphics guiGraphics) {
         RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
         RenderSystem.setShaderTexture(0, this.texture);
@@ -307,24 +312,20 @@ public final class Blitter {
 
         Matrix4f matrix = guiGraphics.pose().last().pose();
 
-        BufferBuilder bufferbuilder = Tesselator.getInstance().getBuilder();
-        bufferbuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
-        bufferbuilder.vertex(matrix, x1, y2, 0)
-                .uv(minU, maxV)
-                .color(r, g, b, a)
-                .endVertex();
-        bufferbuilder.vertex(matrix, x2, y2, 0)
-                .uv(maxU, maxV)
-                .color(r, g, b, a)
-                .endVertex();
-        bufferbuilder.vertex(matrix, x2, y1, 0)
-                .uv(maxU, minV)
-                .color(r, g, b, a)
-                .endVertex();
-        bufferbuilder.vertex(matrix, x1, y1, 0)
-                .uv(minU, minV)
-                .color(r, g, b, a)
-                .endVertex();
+        var bufferbuilder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS,
+                DefaultVertexFormat.POSITION_TEX_COLOR);
+        bufferbuilder.addVertex(matrix, x1, y2, zOffset)
+                .setUv(minU, maxV)
+                .setColor(r, g, b, a);
+        bufferbuilder.addVertex(matrix, x2, y2, zOffset)
+                .setUv(maxU, maxV)
+                .setColor(r, g, b, a);
+        bufferbuilder.addVertex(matrix, x2, y1, zOffset)
+                .setUv(maxU, minV)
+                .setColor(r, g, b, a);
+        bufferbuilder.addVertex(matrix, x1, y1, zOffset)
+                .setUv(minU, minV)
+                .setColor(r, g, b, a);
 
         if (blending) {
             RenderSystem.enableBlend();
@@ -332,7 +333,7 @@ public final class Blitter {
         } else {
             RenderSystem.disableBlend();
         }
-        BufferUploader.drawWithShader(bufferbuilder.end());
+        BufferUploader.drawWithShader(bufferbuilder.buildOrThrow());
     }
 
 }

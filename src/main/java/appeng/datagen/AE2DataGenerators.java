@@ -38,7 +38,7 @@ import appeng.core.AppEng;
 import appeng.core.definitions.AEDamageTypes;
 import appeng.datagen.providers.advancements.AdvancementGenerator;
 import appeng.datagen.providers.localization.LocalizationProvider;
-import appeng.datagen.providers.loot.BlockDropProvider;
+import appeng.datagen.providers.loot.AE2LootTableProvider;
 import appeng.datagen.providers.models.BlockModelProvider;
 import appeng.datagen.providers.models.CableModelProvider;
 import appeng.datagen.providers.models.DecorationModelProvider;
@@ -51,11 +51,14 @@ import appeng.datagen.providers.recipes.DecorationRecipes;
 import appeng.datagen.providers.recipes.EntropyRecipes;
 import appeng.datagen.providers.recipes.InscriberRecipes;
 import appeng.datagen.providers.recipes.MatterCannonAmmoProvider;
+import appeng.datagen.providers.recipes.QuartzCuttingRecipesProvider;
 import appeng.datagen.providers.recipes.SmeltingRecipes;
 import appeng.datagen.providers.recipes.SmithingRecipes;
 import appeng.datagen.providers.recipes.TransformRecipes;
+import appeng.datagen.providers.recipes.UpgradeRecipes;
 import appeng.datagen.providers.tags.BiomeTagsProvider;
 import appeng.datagen.providers.tags.BlockTagsProvider;
+import appeng.datagen.providers.tags.DataComponentTypeTagProvider;
 import appeng.datagen.providers.tags.FluidTagsProvider;
 import appeng.datagen.providers.tags.ItemTagsProvider;
 import appeng.datagen.providers.tags.PoiTypeTagsProvider;
@@ -79,7 +82,7 @@ public class AE2DataGenerators {
                 createDatapackEntriesBuilder(), Set.of(AppEng.MOD_ID)));
 
         // Loot
-        pack.addProvider(bindRegistries(BlockDropProvider::new, registries));
+        pack.addProvider(packOutput -> new AE2LootTableProvider(packOutput, registries));
 
         // Tags
         var blockTagsProvider = pack
@@ -90,6 +93,8 @@ public class AE2DataGenerators {
         pack.addProvider(packOutput -> new FluidTagsProvider(packOutput, registries, existingFileHelper));
         pack.addProvider(packOutput -> new BiomeTagsProvider(packOutput, registries, existingFileHelper));
         pack.addProvider(packOutput -> new PoiTypeTagsProvider(packOutput, registries, existingFileHelper));
+        pack.addProvider(packOutput -> new DataComponentTypeTagProvider(packOutput, registries, existingFileHelper,
+                localization));
 
         // Models
         pack.addProvider(packOutput -> new BlockModelProvider(packOutput, existingFileHelper));
@@ -113,6 +118,8 @@ public class AE2DataGenerators {
         pack.addProvider(bindRegistries(SmithingRecipes::new, registries));
         pack.addProvider(bindRegistries(TransformRecipes::new, registries));
         pack.addProvider(bindRegistries(ChargerRecipes::new, registries));
+        pack.addProvider(bindRegistries(QuartzCuttingRecipesProvider::new, registries));
+        pack.addProvider(bindRegistries(UpgradeRecipes::new, registries));
 
         // Must run last
         pack.addProvider(packOutput -> localization);

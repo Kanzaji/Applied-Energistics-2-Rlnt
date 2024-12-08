@@ -18,10 +18,8 @@
 
 package appeng.items.tools.quartz;
 
-import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.jetbrains.annotations.Nullable;
 
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionResultHolder;
@@ -40,8 +38,6 @@ import appeng.menu.locator.ItemMenuHostLocator;
 import appeng.menu.locator.MenuLocators;
 
 public class QuartzCuttingKnifeItem extends AEBaseItem implements IMenuItem {
-    private final RandomSource random = RandomSource.create();
-
     public QuartzCuttingKnifeItem(Properties props, QuartzToolType type) {
         super(props);
     }
@@ -65,18 +61,6 @@ public class QuartzCuttingKnifeItem extends AEBaseItem implements IMenuItem {
         p.swing(hand);
         return new InteractionResultHolder<>(InteractionResult.sidedSuccess(level.isClientSide()),
                 p.getItemInHand(hand));
-    }
-
-    @Override
-    public ItemStack getCraftingRemainingItem(ItemStack itemStack) {
-        var broken = new MutableBoolean(false);
-        itemStack.hurtAndBreak(1, random, null, broken::setTrue);
-        return broken.getValue() ? ItemStack.EMPTY : itemStack;
-    }
-
-    @Override
-    public boolean hasCraftingRemainingItem(ItemStack stack) {
-        return true;
     }
 
     @Nullable

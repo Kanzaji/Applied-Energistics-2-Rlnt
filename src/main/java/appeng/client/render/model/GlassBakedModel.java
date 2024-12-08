@@ -27,7 +27,6 @@ import java.util.stream.IntStream;
 
 import com.google.common.base.Strings;
 
-import org.apache.commons.lang3.mutable.MutableObject;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
@@ -46,6 +45,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.client.ChunkRenderTypeSet;
 import net.neoforged.neoforge.client.model.IDynamicBakedModel;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import net.neoforged.neoforge.client.model.data.ModelProperty;
@@ -55,6 +55,7 @@ import appeng.decorative.solid.GlassState;
 import appeng.decorative.solid.QuartzGlassBlock;
 
 class GlassBakedModel implements IDynamicBakedModel {
+    private static final ChunkRenderTypeSet RENDER_TYPES = ChunkRenderTypeSet.of(RenderType.CUTOUT);
 
     // This unlisted property is used to determine the actual block that should be
     // rendered
@@ -64,13 +65,13 @@ class GlassBakedModel implements IDynamicBakedModel {
 
     // Alternating textures based on position
     static final Material TEXTURE_A = new Material(TextureAtlas.LOCATION_BLOCKS,
-            new ResourceLocation("ae2:block/glass/quartz_glass_a"));
+            ResourceLocation.parse("ae2:block/glass/quartz_glass_a"));
     static final Material TEXTURE_B = new Material(TextureAtlas.LOCATION_BLOCKS,
-            new ResourceLocation("ae2:block/glass/quartz_glass_b"));
+            ResourceLocation.parse("ae2:block/glass/quartz_glass_b"));
     static final Material TEXTURE_C = new Material(TextureAtlas.LOCATION_BLOCKS,
-            new ResourceLocation("ae2:block/glass/quartz_glass_c"));
+            ResourceLocation.parse("ae2:block/glass/quartz_glass_c"));
     static final Material TEXTURE_D = new Material(TextureAtlas.LOCATION_BLOCKS,
-            new ResourceLocation("ae2:block/glass/quartz_glass_d"));
+            ResourceLocation.parse("ae2:block/glass/quartz_glass_d"));
 
     // Frame texture
     static final Material[] TEXTURES_FRAME = generateTexturesFrame();
@@ -78,7 +79,7 @@ class GlassBakedModel implements IDynamicBakedModel {
     // Generates the required textures for the frame
     private static Material[] generateTexturesFrame() {
         return IntStream.range(1, 16).mapToObj(Integer::toBinaryString).map(s -> Strings.padStart(s, 4, '0'))
-                .map(s -> new ResourceLocation("ae2:block/glass/quartz_glass_frame" + s))
+                .map(s -> ResourceLocation.parse("ae2:block/glass/quartz_glass_frame" + s))
                 .map(rl -> new Material(TextureAtlas.LOCATION_BLOCKS, rl)).toArray(Material[]::new);
     }
 
@@ -220,30 +221,28 @@ class GlassBakedModel implements IDynamicBakedModel {
         float v1 = Mth.clamp(0 - vOffset, 0, 1);
         float v2 = Mth.clamp(1 - vOffset, 0, 1);
 
-        var result = new MutableObject<BakedQuad>();
-        var builder = new QuadBakingVertexConsumer(result::setValue);
+        var builder = new QuadBakingVertexConsumer();
         builder.setSprite(sprite);
         builder.setDirection(side);
         this.putVertex(builder, normal, c1.x(), c1.y(), c1.z(), sprite, u1, v1);
         this.putVertex(builder, normal, c2.x(), c2.y(), c2.z(), sprite, u1, v2);
         this.putVertex(builder, normal, c3.x(), c3.y(), c3.z(), sprite, u2, v2);
         this.putVertex(builder, normal, c4.x(), c4.y(), c4.z(), sprite, u2, v1);
-        return result.getValue();
+        return builder.bakeQuad();
     }
 
     /*
      * This method is as complicated as it is, because the order in which we push data into the vertexbuffer actually
      * has to be precisely the order in which the vertex elements had been declared in the vertex format.
      */
-    private void putVertex(QuadBakingVertexConsumer builder, Vec3 normal, double x, double y, double z,
+    private void putVertex(QuadBakingVertexConsumer builder, Vec3 normal, float x, float y, float z,
             TextureAtlasSprite sprite, float u, float v) {
-        builder.vertex(x, y, z);
-        builder.color(1.0f, 1.0f, 1.0f, 1.0f);
-        builder.normal((float) normal.x, (float) normal.y, (float) normal.z);
+        builder.addVertex(x, y, z);
+        builder.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+        builder.setNormal((float) normal.x, (float) normal.y, (float) normal.z);
         u = sprite.getU(u);
         v = sprite.getV(v);
-        builder.uv(u, v);
-        builder.endVertex();
+        builder.setUv(u, v);
     }
 
     @Override
@@ -318,4 +317,8 @@ class GlassBakedModel implements IDynamicBakedModel {
                 .getBlock() instanceof QuartzGlassBlock;
     }
 
+    @Override
+    public ChunkRenderTypeSet getRenderTypes(BlockState state, RandomSource rand, ModelData data) {
+        return RENDER_TYPES;
+    }
 }

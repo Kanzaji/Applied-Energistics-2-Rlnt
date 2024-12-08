@@ -49,6 +49,7 @@ import appeng.core.network.ClientboundPacket;
 import appeng.core.network.clientbound.CraftingJobStatusPacket;
 import appeng.crafting.CraftingLink;
 import appeng.crafting.inv.ListCraftingInventory;
+import appeng.hooks.ticking.TickHandler;
 import appeng.me.cluster.implementations.CraftingCPUCluster;
 import appeng.me.service.CraftingService;
 
@@ -74,6 +75,8 @@ public class CraftingCpuLogic {
      * True if the CPU is currently trying to clear its inventory but is not able to.
      */
     private boolean cantStoreItems = false;
+
+    private long lastModifiedOnTick = TickHandler.instance().getCurrentTick();
 
     public CraftingCpuLogic(CraftingCPUCluster cluster) {
         this.cluster = cluster;
@@ -188,10 +191,11 @@ public class CraftingCpuLogic {
 
             var details = task.getKey();
             var expectedOutputs = new KeyCounter();
+            var expectedContainerItems = new KeyCounter();
             // Contains the inputs for the pattern.
             @Nullable
             var craftingContainer = CraftingCpuHelper.extractPatternInputs(
-                    details, inventory, level, expectedOutputs);
+                    details, inventory, level, expectedOutputs, expectedContainerItems);
 
             // Try to push to each provider.
             for (var provider : craftingService.getProviders(details)) {
@@ -214,6 +218,12 @@ public class CraftingCpuLogic {
                         job.waitingFor.insert(expectedOutput.getKey(), expectedOutput.getLongValue(),
                                 Actionable.MODULATE);
                     }
+                    for (var expectedContainerItem : expectedContainerItems) {
+                        job.waitingFor.insert(expectedContainerItem.getKey(), expectedContainerItem.getLongValue(),
+                                Actionable.MODULATE);
+                        job.timeTracker.addMaxItems(expectedContainerItem.getLongValue(),
+                                expectedContainerItem.getKey().getType());
+                    }
 
                     cluster.markDirty();
 
@@ -229,8 +239,9 @@ public class CraftingCpuLogic {
 
                     // Prepare next inputs.
                     expectedOutputs.reset();
+                    expectedContainerItems.reset();
                     craftingContainer = CraftingCpuHelper.extractPatternInputs(details, inventory,
-                            level, expectedOutputs);
+                            level, expectedOutputs, expectedContainerItems);
                 }
             }
 
@@ -266,7 +277,7 @@ public class CraftingCpuLogic {
         }
 
         if (type == Actionable.MODULATE) {
-            job.timeTracker.decrementItems(amount);
+            job.timeTracker.decrementItems(amount, what.getType()); // Process Fluid and Items
             job.waitingFor.extract(what, amount, Actionable.MODULATE);
             cluster.markDirty();
         }
@@ -383,9 +394,14 @@ public class CraftingCpuLogic {
     }
 
     private void postChange(AEKey what) {
+        lastModifiedOnTick = TickHandler.instance().getCurrentTick();
         for (var listener : listeners) {
             listener.accept(what);
         }
+    }
+
+    public long getLastModifiedOnTick() {
+        return lastModifiedOnTick;
     }
 
     public boolean hasJob() {
@@ -401,7 +417,7 @@ public class CraftingCpuLogic {
         if (this.job != null) {
             return this.job.timeTracker;
         } else {
-            return new ElapsedTimeTracker(0);
+            return new ElapsedTimeTracker();
         }
     }
 
@@ -502,6 +518,8 @@ public class CraftingCpuLogic {
     }
 
     private void notifyJobOwner(ExecutingCraftingJob job, CraftingJobStatusPacket.Status status) {
+        this.lastModifiedOnTick = TickHandler.instance().getCurrentTick();
+
         var playerId = job.playerId;
         if (playerId == null) {
             return;

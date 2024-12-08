@@ -7,10 +7,10 @@ import java.util.function.Function;
 
 import org.jetbrains.annotations.Nullable;
 
-import net.minecraft.world.Container;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.crafting.RecipeInput;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.RecipeType;
 
@@ -25,9 +25,7 @@ import appeng.client.guidebook.document.block.recipes.LytSmithingRecipe;
 import appeng.client.guidebook.document.block.recipes.LytTransformRecipe;
 import appeng.libs.mdast.mdx.model.MdxJsxElementFields;
 import appeng.libs.mdast.model.MdAstNode;
-import appeng.recipes.handlers.ChargerRecipe;
-import appeng.recipes.handlers.InscriberRecipe;
-import appeng.recipes.transform.TransformRecipe;
+import appeng.recipes.AERecipeTypes;
 import appeng.util.Platform;
 
 /**
@@ -38,9 +36,9 @@ public class RecipeCompiler extends BlockTagCompiler {
             new RecipeTypeMapping<>(RecipeType.CRAFTING, LytCraftingRecipe::new),
             new RecipeTypeMapping<>(RecipeType.SMELTING, LytSmeltingRecipe::new),
             new RecipeTypeMapping<>(RecipeType.SMITHING, LytSmithingRecipe::new),
-            new RecipeTypeMapping<>(InscriberRecipe.TYPE, LytInscriberRecipe::new),
-            new RecipeTypeMapping<>(ChargerRecipe.TYPE, LytChargerRecipe::new),
-            new RecipeTypeMapping<>(TransformRecipe.TYPE, LytTransformRecipe::new));
+            new RecipeTypeMapping<>(AERecipeTypes.INSCRIBER, LytInscriberRecipe::new),
+            new RecipeTypeMapping<>(AERecipeTypes.CHARGER, LytChargerRecipe::new),
+            new RecipeTypeMapping<>(AERecipeTypes.TRANSFORM, LytTransformRecipe::new));
 
     @Override
     public Set<String> getTagNames() {
@@ -104,11 +102,13 @@ public class RecipeCompiler extends BlockTagCompiler {
     /**
      * Maps a recipe type to a factory that can create a layout block to display it.
      */
-    private record RecipeTypeMapping<T extends Recipe<C>, C extends Container>(
+    private record RecipeTypeMapping<T extends Recipe<C>, C extends RecipeInput>(
             RecipeType<T> recipeType,
             Function<RecipeHolder<T>, LytBlock> factory) {
         @Nullable
         LytBlock tryCreate(RecipeManager recipeManager, Item resultItem) {
+            var registryAccess = Platform.getClientRegistryAccess();
+
             // We try to find non-special recipes first then fall back to special
             List<RecipeHolder<T>> fallbackCandidates = new ArrayList<>();
             for (var recipe : recipeManager.byType(recipeType)) {
@@ -117,24 +117,14 @@ public class RecipeCompiler extends BlockTagCompiler {
                     continue;
                 }
 
-                try {
-                    if (recipe.value().getResultItem(null).getItem() == resultItem) {
-                        return factory.apply(recipe);
-                    }
-                } catch (Exception ignored) {
-                    // :-P
-                    // Happens if the recipe doesn't accept a null RegistryAccess
+                if (recipe.value().getResultItem(registryAccess).getItem() == resultItem) {
+                    return factory.apply(recipe);
                 }
             }
 
             for (var recipe : fallbackCandidates) {
-                try {
-                    if (recipe.value().getResultItem(null).getItem() == resultItem) {
-                        return factory.apply(recipe);
-                    }
-                } catch (Exception ignored) {
-                    // :-P
-                    // Happens if the recipe doesn't accept a null RegistryAccess
+                if (recipe.value().getResultItem(registryAccess).getItem() == resultItem) {
+                    return factory.apply(recipe);
                 }
             }
 

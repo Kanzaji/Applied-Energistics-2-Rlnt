@@ -40,9 +40,10 @@ import appeng.api.config.CondenserOutput;
 import appeng.api.config.CpuSelectionMode;
 import appeng.api.config.FullnessMode;
 import appeng.api.config.FuzzyMode;
+import appeng.api.config.InscriberInputCapacity;
 import appeng.api.config.LockCraftingMode;
 import appeng.api.config.OperationMode;
-import appeng.api.config.PowerUnits;
+import appeng.api.config.PowerUnit;
 import appeng.api.config.RedstoneMode;
 import appeng.api.config.RelativeDirection;
 import appeng.api.config.SchedulingMode;
@@ -111,12 +112,12 @@ public class SettingToggleButton<T extends Enum<T>> extends IconButton {
             registerApp(Icon.ACCESS_READ_WRITE, Settings.ACCESS, AccessRestriction.READ_WRITE, ButtonToolTips.IOMode,
                     ButtonToolTips.ReadWrite);
 
-            registerApp(Icon.POWER_UNIT_AE, Settings.POWER_UNITS, PowerUnits.AE, ButtonToolTips.PowerUnits,
-                    PowerUnits.AE.textComponent());
+            registerApp(Icon.POWER_UNIT_AE, Settings.POWER_UNITS, PowerUnit.AE, ButtonToolTips.PowerUnits,
+                    PowerUnit.AE.textComponent());
             // registerApp(Icon.POWER_UNIT_EU, Settings.POWER_UNITS, PowerUnits.EU, ButtonToolTips.PowerUnits,
             // PowerUnits.EU.textComponent());
-            registerApp(Icon.POWER_UNIT_RF, Settings.POWER_UNITS, PowerUnits.FE, ButtonToolTips.PowerUnits,
-                    PowerUnits.FE.textComponent());
+            registerApp(Icon.POWER_UNIT_RF, Settings.POWER_UNITS, PowerUnit.FE, ButtonToolTips.PowerUnits,
+                    PowerUnit.FE.textComponent());
 
             registerApp(Icon.REDSTONE_IGNORE, Settings.REDSTONE_CONTROLLED, RedstoneMode.IGNORE,
                     ButtonToolTips.RedstoneMode,
@@ -131,10 +132,10 @@ public class SettingToggleButton<T extends Enum<T>> extends IconButton {
                     ButtonToolTips.RedstoneMode,
                     ButtonToolTips.ActiveOnPulse);
 
-            registerApp(Icon.REDSTONE_LOW, Settings.REDSTONE_EMITTER, RedstoneMode.LOW_SIGNAL,
+            registerApp(Icon.REDSTONE_BELOW, Settings.REDSTONE_EMITTER, RedstoneMode.LOW_SIGNAL,
                     ButtonToolTips.RedstoneMode,
                     ButtonToolTips.EmitLevelsBelow);
-            registerApp(Icon.REDSTONE_HIGH, Settings.REDSTONE_EMITTER, RedstoneMode.HIGH_SIGNAL,
+            registerApp(Icon.REDSTONE_ABOVE_EQUAL, Settings.REDSTONE_EMITTER, RedstoneMode.HIGH_SIGNAL,
                     ButtonToolTips.RedstoneMode,
                     ButtonToolTips.EmitLevelAbove);
 
@@ -269,10 +270,10 @@ public class SettingToggleButton<T extends Enum<T>> extends IconButton {
             registerApp(Icon.UNLOCKED, Settings.LOCK_CRAFTING_MODE, LockCraftingMode.NONE,
                     ButtonToolTips.LockCraftingMode,
                     ButtonToolTips.LockCraftingModeNone);
-            registerApp(Icon.REDSTONE_LOW, Settings.LOCK_CRAFTING_MODE, LockCraftingMode.LOCK_WHILE_HIGH,
+            registerApp(Icon.REDSTONE_ON, Settings.LOCK_CRAFTING_MODE, LockCraftingMode.LOCK_WHILE_HIGH,
                     ButtonToolTips.LockCraftingMode,
                     ButtonToolTips.LockCraftingWhileRedstoneHigh);
-            registerApp(Icon.REDSTONE_HIGH, Settings.LOCK_CRAFTING_MODE, LockCraftingMode.LOCK_WHILE_LOW,
+            registerApp(Icon.REDSTONE_OFF, Settings.LOCK_CRAFTING_MODE, LockCraftingMode.LOCK_WHILE_LOW,
                     ButtonToolTips.LockCraftingMode,
                     ButtonToolTips.LockCraftingWhileRedstoneLow);
             registerApp(Icon.REDSTONE_PULSE, Settings.LOCK_CRAFTING_MODE, LockCraftingMode.LOCK_UNTIL_PULSE,
@@ -296,12 +297,15 @@ public class SettingToggleButton<T extends Enum<T>> extends IconButton {
                     ButtonToolTips.AutoExport,
                     ButtonToolTips.AutoExportOff);
 
-            registerApp(Icon.INSCRIBER_BUFFER_HIGH, Settings.INSCRIBER_BUFFER_SIZE, YesNo.YES,
+            registerApp(Icon.INSCRIBER_BUFFER_64, Settings.INSCRIBER_INPUT_CAPACITY, InscriberInputCapacity.SIXTY_FOUR,
                     ButtonToolTips.InscriberBufferSize,
                     ButtonToolTips.InscriberBufferHigh);
-            registerApp(Icon.INSCRIBER_BUFFER_LOW, Settings.INSCRIBER_BUFFER_SIZE, YesNo.NO,
+            registerApp(Icon.INSCRIBER_BUFFER_4, Settings.INSCRIBER_INPUT_CAPACITY, InscriberInputCapacity.FOUR,
                     ButtonToolTips.InscriberBufferSize,
                     ButtonToolTips.InscriberBufferLow);
+            registerApp(Icon.INSCRIBER_BUFFER_1, Settings.INSCRIBER_INPUT_CAPACITY, InscriberInputCapacity.ONE,
+                    ButtonToolTips.InscriberBufferSize,
+                    ButtonToolTips.InscriberBufferVeryLow);
         }
     }
 

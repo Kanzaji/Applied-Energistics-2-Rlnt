@@ -40,7 +40,7 @@ public class ItemGenBlock extends AEBaseEntityBlock<ItemGenBlockEntity> {
     @Override
     protected ItemInteractionResult useItemOn(ItemStack heldItem, BlockState state, Level level, BlockPos pos,
             Player player, InteractionHand hand, BlockHitResult hit) {
-        if (level.getBlockEntity(pos) instanceof ItemGenBlockEntity itemGen) {
+        if (!heldItem.isEmpty() && level.getBlockEntity(pos) instanceof ItemGenBlockEntity itemGen) {
             itemGen.setItem(heldItem.getItem());
 
             return ItemInteractionResult.sidedSuccess(level.isClientSide);
@@ -50,7 +50,7 @@ public class ItemGenBlock extends AEBaseEntityBlock<ItemGenBlockEntity> {
     }
 
     @Override
-    public void addToMainCreativeTab(CreativeModeTab.Output output) {
+    public void addToMainCreativeTab(CreativeModeTab.ItemDisplayParameters parameters, CreativeModeTab.Output output) {
         if (AEConfig.instance().isDebugToolsEnabled()) {
             output.accept(this);
         }

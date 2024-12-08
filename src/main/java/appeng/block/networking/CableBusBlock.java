@@ -248,13 +248,13 @@ public class CableBusBlock extends AEBaseEntityBlock<CableBusBlockEntity> implem
     public boolean recolorBlock(BlockGetter level, BlockPos pos, Direction side,
             DyeColor color, Player who) {
         try {
-            return this.cb(level, pos).recolourBlock(side, AEColor.values()[color.ordinal()], who);
+            return this.cb(level, pos).recolourBlock(side, AEColor.fromDye(color), who);
         } catch (Throwable ignored) {
         }
         return false;
     }
 
-    public void addToMainCreativeTab(CreativeModeTab.Output output) {
+    public void addToMainCreativeTab(CreativeModeTab.ItemDisplayParameters parameters, CreativeModeTab.Output output) {
         // do nothing
     }
 

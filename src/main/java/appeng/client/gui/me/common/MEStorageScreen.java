@@ -138,7 +138,7 @@ public class MEStorageScreen<C extends MEStorageMenu>
         this.searchField = widgets.addTextField("search");
         this.searchField.setPlaceholder(GuiText.SearchPlaceholder.text());
 
-        this.scrollbar = widgets.addScrollBar("scrollbar");
+        this.scrollbar = widgets.addScrollBar("scrollbar", Scrollbar.BIG);
         this.repo = new Repo(scrollbar, this);
         menu.setClientRepo(this.repo);
         this.repo.setUpdateViewListener(this::updateScrollbar);
@@ -162,7 +162,6 @@ public class MEStorageScreen<C extends MEStorageMenu>
         if (this.style.isSupportsAutoCrafting()) {
             this.craftingStatusBtn = new TabButton(Icon.CRAFT_HAMMER,
                     GuiText.CraftingStatus.text(), btn -> showCraftingStatus());
-            this.craftingStatusBtn.setStyle(TabButton.Style.CORNER);
             this.widgets.add("craftingStatus", this.craftingStatusBtn);
         }
 
@@ -380,7 +379,7 @@ public class MEStorageScreen<C extends MEStorageMenu>
             setTextContent(TEXT_ID_DIALOG_TITLE, this.title);
         } else if (this.menu.getTarget() instanceof IMEChest) {
             // ME Chest uses Item Terminals, but overrides the title
-            setTextContent(TEXT_ID_DIALOG_TITLE, GuiText.Chest.text());
+            setTextContent(TEXT_ID_DIALOG_TITLE, GuiText.MEChest.text());
         }
     }
 
@@ -406,11 +405,11 @@ public class MEStorageScreen<C extends MEStorageMenu>
 
             // This can change due to changes in the search settings sub-screen
             this.searchField.setTooltipMessage(List.of(
-                    config.isSearchTooltips() ? GuiText.SearchTooltipIncludingTooltips.text()
-                            : GuiText.SearchTooltip.text(),
+                    GuiText.SearchTooltip.text(),
                     GuiText.SearchTooltipModId.text(),
-                    GuiText.SearchTooltipItemId.text(),
-                    GuiText.SearchTooltipTag.text()));
+                    GuiText.SearchTooltipTag.text(),
+                    GuiText.SearchTooltipToolTips.text(),
+                    GuiText.SearchTooltipItemId.text()));
 
             // Sync the search text both ways but make the direction depend on which search has the focus
             if (config.isSyncWithExternalSearch()) {
@@ -452,8 +451,8 @@ public class MEStorageScreen<C extends MEStorageMenu>
         if (this.craftingStatusBtn != null && menu.activeCraftingJobs != -1) {
             // The stack size renderer expects a 16x16 slot, while the button is normally
             // bigger
-            int x = this.craftingStatusBtn.getX() + (this.craftingStatusBtn.getWidth() - 16) / 2;
-            int y = this.craftingStatusBtn.getY() + (this.craftingStatusBtn.getHeight() - 16) / 2;
+            int x = this.craftingStatusBtn.getX() + (this.craftingStatusBtn.getWidth() - 18) / 2;
+            int y = this.craftingStatusBtn.getY() + (this.craftingStatusBtn.getHeight() - 18) / 2;
 
             StackSizeRenderer.renderSizeLabel(guiGraphics, font, x - this.leftPos, y - this.topPos,
                     String.valueOf(menu.activeCraftingJobs));
@@ -633,9 +632,7 @@ public class MEStorageScreen<C extends MEStorageMenu>
                     boolean craftable = entry.isCraftable();
                     var useLargeFonts = config.isUseLargeFonts();
                     if (craftable && (isViewOnlyCraftable() || storedAmount <= 0)) {
-                        var craftLabelText = useLargeFonts ? GuiText.LargeFontCraft.getLocal()
-                                : GuiText.SmallFontCraft.getLocal();
-                        StackSizeRenderer.renderSizeLabel(guiGraphics, this.font, s.x, s.y, craftLabelText);
+                        StackSizeRenderer.renderSizeLabel(guiGraphics, this.font, s.x, s.y, "+");
                     } else {
                         AmountFormat format = useLargeFonts ? AmountFormat.SLOT_LARGE_FONT
                                 : AmountFormat.SLOT;
@@ -813,6 +810,10 @@ public class MEStorageScreen<C extends MEStorageMenu>
         }
 
         this.repo.updateView();
+    }
+
+    protected int getVisibleRows() {
+        return rows;
     }
 
     private void toggleTerminalStyle(SettingToggleButton<appeng.api.config.TerminalStyle> btn, boolean backwards) {

@@ -23,6 +23,7 @@ import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
+import appeng.api.config.InscriberInputCapacity;
 import appeng.api.config.Settings;
 import appeng.api.config.YesNo;
 import appeng.api.util.IConfigManager;
@@ -63,7 +64,7 @@ public class InscriberMenu extends UpgradeableMenu<InscriberBlockEntity> impleme
     @GuiSync(8)
     public YesNo autoExport = YesNo.NO;
     @GuiSync(9)
-    public YesNo bufferSize = YesNo.YES;
+    public InscriberInputCapacity bufferSize = InscriberInputCapacity.SIXTY_FOUR;
 
     public InscriberMenu(int id, Inventory ip, InscriberBlockEntity host) {
         super(TYPE, id, ip, host);
@@ -100,7 +101,7 @@ public class InscriberMenu extends UpgradeableMenu<InscriberBlockEntity> impleme
     protected void loadSettingsFromHost(IConfigManager cm) {
         this.separateSides = getHost().getConfigManager().getSetting(Settings.INSCRIBER_SEPARATE_SIDES);
         this.autoExport = getHost().getConfigManager().getSetting(Settings.AUTO_EXPORT);
-        this.bufferSize = getHost().getConfigManager().getSetting(Settings.INSCRIBER_BUFFER_SIZE);
+        this.bufferSize = getHost().getConfigManager().getSetting(Settings.INSCRIBER_INPUT_CAPACITY);
     }
 
     @Override
@@ -119,8 +120,8 @@ public class InscriberMenu extends UpgradeableMenu<InscriberBlockEntity> impleme
 
         if (s == this.middle) {
             ItemDefinition<?> press = AEItems.NAME_PRESS;
-            if (press.isSameAs(top) || press.isSameAs(bot)) {
-                return !press.isSameAs(is);
+            if (press.is(top) || press.is(bot)) {
+                return !press.is(is);
             }
 
             return InscriberRecipes.findRecipe(getHost().getLevel(), is, top, bot, false) != null;
@@ -134,8 +135,8 @@ public class InscriberMenu extends UpgradeableMenu<InscriberBlockEntity> impleme
 
             // name presses
             ItemDefinition<?> namePress = AEItems.NAME_PRESS;
-            if (namePress.isSameAs(otherSlot)) {
-                return namePress.isSameAs(is);
+            if (namePress.is(otherSlot)) {
+                return namePress.is(is);
             }
 
             // everything else
@@ -163,7 +164,7 @@ public class InscriberMenu extends UpgradeableMenu<InscriberBlockEntity> impleme
         return autoExport;
     }
 
-    public YesNo getBufferSize() {
+    public InscriberInputCapacity getBufferSize() {
         return bufferSize;
     }
 }

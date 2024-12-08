@@ -1,5 +1,27 @@
 package appeng.integration.modules.emi;
 
+import static appeng.integration.modules.itemlists.TransferHelper.BLUE_SLOT_HIGHLIGHT_COLOR;
+import static appeng.integration.modules.itemlists.TransferHelper.RED_SLOT_HIGHLIGHT_COLOR;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.jetbrains.annotations.Nullable;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.level.Level;
+
+import dev.emi.emi.api.recipe.EmiPlayerInventory;
 import appeng.api.stacks.AEKey;
 import appeng.integration.modules.itemlists.EncodingHelper;
 import appeng.integration.modules.itemlists.TransferHelper;
@@ -11,25 +33,16 @@ import dev.emi.emi.api.recipe.VanillaEmiRecipeCategories;
 import dev.emi.emi.api.recipe.handler.EmiCraftContext;
 import dev.emi.emi.api.recipe.handler.StandardRecipeHandler;
 import dev.emi.emi.api.stack.EmiIngredient;
+import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.widget.Bounds;
 import dev.emi.emi.api.widget.SlotWidget;
 import dev.emi.emi.api.widget.Widget;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.level.Level;
-import org.jetbrains.annotations.Nullable;
-
+import appeng.api.stacks.GenericStack;
+import appeng.core.AEConfig;
+import appeng.menu.me.common.MEStorageMenu;
 import java.util.*;
 import java.util.stream.Collectors;
-
-import static appeng.integration.modules.itemlists.TransferHelper.BLUE_SLOT_HIGHLIGHT_COLOR;
-import static appeng.integration.modules.itemlists.TransferHelper.RED_SLOT_HIGHLIGHT_COLOR;
 
 abstract class AbstractRecipeHandler<T extends AEBaseMenu> implements StandardRecipeHandler<T> {
     protected static final int CRAFTING_GRID_WIDTH = 3;
@@ -46,6 +59,7 @@ abstract class AbstractRecipeHandler<T extends AEBaseMenu> implements StandardRe
         var slots = new ArrayList<Slot>();
         slots.addAll(menu.getSlots(SlotSemantics.PLAYER_INVENTORY));
         slots.addAll(menu.getSlots(SlotSemantics.PLAYER_HOTBAR));
+        slots.addAll(menu.getSlots(SlotSemantics.CRAFTING_GRID));
         return slots;
     }
 
@@ -60,6 +74,34 @@ abstract class AbstractRecipeHandler<T extends AEBaseMenu> implements StandardRe
             return slot;
         }
         return null;
+    }
+
+    @Override
+    public EmiPlayerInventory getInventory(AbstractContainerScreen<T> screen) {
+        if (!AEConfig.instance().isExposeNetworkInventoryToEmi()) {
+            return StandardRecipeHandler.super.getInventory(screen);
+        }
+
+        var list = new ArrayList<EmiStack>();
+
+        for (Slot slot : getInputSources(screen.getMenu())) {
+            list.add(EmiStack.of(slot.getItem()));
+        }
+
+        if (screen.getMenu() instanceof MEStorageMenu menu) {
+            var repo = menu.getClientRepo();
+
+            if (repo != null) {
+                for (var entry : repo.getAllEntries()) {
+                    if (entry.getStoredAmount() <= 0) {
+                        continue; // Skip items that are only craftable
+                    }
+                    list.add(EmiStackHelper.toEmiStack(new GenericStack(entry.getWhat(), entry.getStoredAmount())));
+                }
+            }
+        }
+
+        return new EmiPlayerInventory(list);
     }
 
     @Override

@@ -48,7 +48,7 @@ public class GameTestPlotAdapter {
                     false,
                     1,
                     1,
-                    false,
+                    test.skyAccess,
                     gameTestHelper -> {
                         test.getTestFunction().accept(new PlotTestHelper(
                                 getPlotTranslation(plot.getBounds()),
@@ -104,7 +104,7 @@ public class GameTestPlotAdapter {
         var structureBlock = (StructureBlockEntity) level.getBlockEntity(pos);
         structureBlock.setMode(StructureMode.LOAD);
         structureBlock.setIgnoreEntities(false);
-        structureBlock.setStructureName(new ResourceLocation(info.getStructureName()));
+        structureBlock.setStructureName(ResourceLocation.parse(info.getStructureName()));
         structureBlock.setMetaData(info.getTestName());
         structureBlock.setStructureSize(size);
 
