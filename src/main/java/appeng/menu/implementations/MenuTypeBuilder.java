@@ -25,7 +25,7 @@ import com.google.common.base.Preconditions;
 import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
 import net.minecraft.resources.ResourceLocation;
@@ -113,7 +113,7 @@ public final class MenuTypeBuilder<M extends AEBaseMenu, I> {
      * Opens a menu that is based around a single block entity. The block entity's position is encoded in the packet
      * buffer.
      */
-    private M fromNetwork(int containerId, Inventory inv, FriendlyByteBuf packetBuf) {
+    private M fromNetwork(int containerId, Inventory inv, RegistryFriendlyByteBuf packetBuf) {
         var locator = MenuLocators.readFromPacket(packetBuf);
         I host = locator.locate(inv.player, hostInterface);
         if (host == null) {
@@ -181,14 +181,18 @@ public final class MenuTypeBuilder<M extends AEBaseMenu, I> {
         return true;
     }
 
+    public MenuType<M> build(String id) {
+        return build(AppEng.makeId(id));
+    }
+
     /**
      * Creates a menu type that uses this helper as a factory and network deserializer.
      */
-    public MenuType<M> build(String id) {
+    public MenuType<M> build(ResourceLocation id) {
         Preconditions.checkState(menuType == null, "build was already called");
         Preconditions.checkState(this.id == null, "id should not be set");
 
-        this.id = AppEng.makeId(id);
+        this.id = id;
         menuType = IMenuTypeExtension.create(this::fromNetwork);
         InitMenuTypes.queueRegistration(this.id, menuType);
         MenuOpener.addOpener(menuType, this::open);
@@ -211,7 +215,7 @@ public final class MenuTypeBuilder<M extends AEBaseMenu, I> {
      */
     @FunctionalInterface
     public interface InitialDataSerializer<I> {
-        void serializeInitialData(I host, FriendlyByteBuf buffer);
+        void serializeInitialData(I host, RegistryFriendlyByteBuf buffer);
     }
 
     /**
@@ -220,7 +224,7 @@ public final class MenuTypeBuilder<M extends AEBaseMenu, I> {
      */
     @FunctionalInterface
     public interface InitialDataDeserializer<C, I> {
-        void deserializeInitialData(I host, C menu, FriendlyByteBuf buffer);
+        void deserializeInitialData(I host, C menu, RegistryFriendlyByteBuf buffer);
     }
 
     private Component getDefaultMenuTitle(I accessInterface) {

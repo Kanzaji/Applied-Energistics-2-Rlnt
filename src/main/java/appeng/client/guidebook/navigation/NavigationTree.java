@@ -8,11 +8,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import com.mojang.serialization.JavaOps;
+
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -113,9 +116,17 @@ public class NavigationTree {
         // Construct the icon if set
         var icon = ItemStack.EMPTY;
         if (navigationEntry.iconItemId() != null) {
-            var iconItem = BuiltInRegistries.ITEM.get(navigationEntry.iconItemId());
-            icon = new ItemStack(iconItem);
-            icon.setTag(navigationEntry.iconNbt());
+            var iconItem = BuiltInRegistries.ITEM.getHolder(navigationEntry.iconItemId()).orElseThrow();
+
+            if (navigationEntry.iconComponents() != null) {
+                var patch = DataComponentPatch.CODEC.parse(JavaOps.INSTANCE, navigationEntry.iconComponents())
+                        .resultOrPartial(err -> LOGGER.error("Failed to deserialize component patch {} for icon {}: {}",
+                                navigationEntry.iconComponents(), navigationEntry.iconItemId(), err));
+                icon = new ItemStack(iconItem, 1, patch.orElse(DataComponentPatch.EMPTY));
+            } else {
+                icon = new ItemStack(iconItem);
+            }
+
             if (icon.isEmpty()) {
                 LOGGER.error("Couldn't find icon {} for icon of page {}", navigationEntry.iconItemId(), page);
             }

@@ -20,7 +20,6 @@ package appeng.items.tools.quartz;
 
 import org.jetbrains.annotations.Nullable;
 
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionResultHolder;
@@ -39,8 +38,6 @@ import appeng.menu.locator.ItemMenuHostLocator;
 import appeng.menu.locator.MenuLocators;
 
 public class QuartzCuttingKnifeItem extends AEBaseItem implements IMenuItem {
-    private final RandomSource random = RandomSource.create();
-
     public QuartzCuttingKnifeItem(Properties props, QuartzToolType type) {
         super(props);
     }
@@ -64,21 +61,6 @@ public class QuartzCuttingKnifeItem extends AEBaseItem implements IMenuItem {
         p.swing(hand);
         return new InteractionResultHolder<>(InteractionResult.sidedSuccess(level.isClientSide()),
                 p.getItemInHand(hand));
-    }
-
-    @Override
-    public ItemStack getCraftingRemainingItem(ItemStack itemStack) {
-        ItemStack damagedStack = itemStack.copy();
-        if (damagedStack.hurt(1, random, null)) {
-            return ItemStack.EMPTY;
-        } else {
-            return damagedStack;
-        }
-    }
-
-    @Override
-    public boolean hasCraftingRemainingItem(ItemStack stack) {
-        return true;
     }
 
     @Nullable

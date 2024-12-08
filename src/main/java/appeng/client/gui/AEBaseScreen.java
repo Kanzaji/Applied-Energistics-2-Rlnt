@@ -55,6 +55,7 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import appeng.api.behaviors.ContainerItemStrategies;
 import appeng.api.behaviors.EmptyingAction;
@@ -84,7 +85,7 @@ import appeng.core.AppEng;
 import appeng.core.AppEngClient;
 import appeng.core.localization.ButtonToolTips;
 import appeng.core.localization.Tooltips;
-import appeng.core.network.NetworkHandler;
+import appeng.core.network.ServerboundPacket;
 import appeng.core.network.serverbound.InventoryActionPacket;
 import appeng.core.network.serverbound.SwapSlotsPacket;
 import appeng.helpers.InventoryAction;
@@ -131,7 +132,6 @@ public abstract class AEBaseScreen<T extends AEBaseMenu> extends AbstractContain
     protected final WidgetContainer widgets;
     protected final ScreenStyle style;
     protected final AEConfig config = AEConfig.instance();
-
     /**
      * The positions of all slots when a subscreen is opened.
      */
@@ -146,7 +146,14 @@ public abstract class AEBaseScreen<T extends AEBaseMenu> extends AbstractContain
 
         this.style = Objects.requireNonNull(style, "style");
         this.widgets = new WidgetContainer(style);
-        this.widgets.add("verticalToolbar", this.verticalToolbar = new VerticalButtonBar());
+        this.verticalToolbar = new VerticalButtonBar();
+//        this.widgets.add("verticalToolbar", this.verticalToolbar = new VerticalButtonBar());
+
+        // TODO (RID): Added a check if a Screen should have the Vertical Tool Bar. This was added to avoid rendering
+        // the bar from the SkyChestScreen.
+        if (shouldAddToolbar()) {
+            this.widgets.add("verticalToolbar", this.verticalToolbar);
+        }
 
         // Add a help-button to the vertical button bar
         this.helpButton = addToLeftToolbar(new OpenGuideButton(btn -> openHelp()));
@@ -167,6 +174,10 @@ public abstract class AEBaseScreen<T extends AEBaseMenu> extends AbstractContain
         positionSlots();
 
         widgets.populateScreen(this::addRenderableWidget, getBounds(true), this);
+    }
+
+    protected boolean shouldAddToolbar() {
+        return true; // Default behavior is to add the toolbar
     }
 
     private void positionSlots() {
@@ -503,7 +514,7 @@ public abstract class AEBaseScreen<T extends AEBaseMenu> extends AbstractContain
         // If a slot is optional and doesn't currently render, we still need to provide a background for it
         if (alwaysDraw || slot.isRenderDisabled()) {
             // If the slot is disabled, shade the background overlay
-            float alpha = slot.isSlotEnabled() ? 1.0f : 0.4f;
+            float alpha = slot.isSlotEnabled() ? 1.0f : 0.2f;
 
             Point pos = slot.getBackgroundPos();
 
@@ -598,7 +609,7 @@ public abstract class AEBaseScreen<T extends AEBaseMenu> extends AbstractContain
                     var p = new InventoryActionPacket(
                             mouseButton == 0 ? InventoryAction.PICKUP_OR_SET_DOWN : InventoryAction.PLACE_SINGLE,
                             dr.index, 0);
-                    NetworkHandler.instance().sendToServer(p);
+                    PacketDistributor.sendToServer(p);
                 }
             }
 
@@ -630,7 +641,7 @@ public abstract class AEBaseScreen<T extends AEBaseMenu> extends AbstractContain
                 && mouseButton == InputConstants.MOUSE_BUTTON_RIGHT
                 && getEmptyingAction(slot, menu.getCarried()) != null) {
             var p = new InventoryActionPacket(InventoryAction.EMPTY_ITEM, slotIdx, 0);
-            NetworkHandler.instance().sendToServer(p);
+            PacketDistributor.sendToServer(p);
             return;
         }
 
@@ -642,7 +653,7 @@ public abstract class AEBaseScreen<T extends AEBaseMenu> extends AbstractContain
             var action = mouseButton == 1 ? InventoryAction.SPLIT_OR_PLACE_SINGLE
                     : InventoryAction.PICKUP_OR_SET_DOWN;
             var p = new InventoryActionPacket(action, slotIdx, 0);
-            NetworkHandler.instance().sendToServer(p);
+            PacketDistributor.sendToServer(p);
             return;
         }
 
@@ -650,22 +661,23 @@ public abstract class AEBaseScreen<T extends AEBaseMenu> extends AbstractContain
             InventoryAction action;
             if (hasShiftDown()) {
                 action = InventoryAction.CRAFT_SHIFT;
+            } else if (InputConstants.isKeyDown(getMinecraft().getWindow().getWindow(), GLFW.GLFW_KEY_SPACE)) {
+                action = InventoryAction.CRAFT_ALL;
             } else {
                 // Craft stack on right-click, craft single on left-click
                 action = mouseButton == 1 ? InventoryAction.CRAFT_STACK : InventoryAction.CRAFT_ITEM;
             }
 
             final InventoryActionPacket p = new InventoryActionPacket(action, slotIdx, 0);
-            NetworkHandler.instance().sendToServer(p);
+            PacketDistributor.sendToServer(p);
 
             return;
         }
 
-        if (slot != null &&
-                InputConstants.isKeyDown(Minecraft.getInstance().getWindow().getWindow(), GLFW.GLFW_KEY_SPACE)) {
+        if (slot != null && InputConstants.isKeyDown(getMinecraft().getWindow().getWindow(), GLFW.GLFW_KEY_SPACE)) {
             int slotNum = slot.index;
             final InventoryActionPacket p = new InventoryActionPacket(InventoryAction.MOVE_REGION, slotNum, 0);
-            NetworkHandler.instance().sendToServer(p);
+            PacketDistributor.sendToServer(p);
             return;
         }
 
@@ -742,8 +754,8 @@ public abstract class AEBaseScreen<T extends AEBaseMenu> extends AbstractContain
                         for (Slot s : slots) {
                             if (s.slot == j
                                     && s.container == this.menu.getPlayerInventory()) {
-                                NetworkHandler.instance()
-                                        .sendToServer(new SwapSlotsPacket(s.index, theSlot.index));
+                                ServerboundPacket message = new SwapSlotsPacket(s.index, theSlot.index);
+                                PacketDistributor.sendToServer(message);
                                 return true;
                             }
                         }
@@ -956,11 +968,17 @@ public abstract class AEBaseScreen<T extends AEBaseMenu> extends AbstractContain
     }
 
     /**
-     * Used by mixin to render the slot highlight.
+     * Renders a highlight for the given slot to indicate the mouse is currently hovering over it.
      */
-    public void renderCustomSlotHighlight(GuiGraphics guiGraphics, int x, int y, int z) {
+    protected void renderSlotHighlight(GuiGraphics guiGraphics, Slot slot, int mouseX, int mouseY, float partialTick) {
+        if (!slot.isHighlightable()) {
+            return;
+        }
+
+        int x = slot.x;
+        int y = slot.y;
         int w, h;
-        if (this.hoveredSlot instanceof ResizableSlot resizableSlot) {
+        if (slot instanceof ResizableSlot resizableSlot) {
             w = resizableSlot.getWidth();
             h = resizableSlot.getHeight();
         } else {
@@ -969,7 +987,12 @@ public abstract class AEBaseScreen<T extends AEBaseMenu> extends AbstractContain
         }
 
         // Same as the Vanilla method, just with dynamic width and height
-        guiGraphics.fillGradient(RenderType.guiOverlay(), x, y, x + w, y + h, 0x80ffffff, 0x80ffffff, z);
+        // Added a custom slot highlight effect - RID
+        guiGraphics.hLine(x, x + w, y - 1, 0xFFdaffff);
+        guiGraphics.hLine(x - 1, x + w, y + h, 0xFFdaffff);
+        guiGraphics.vLine(x - 1, y - 2, y + h, 0xFFdaffff);
+        guiGraphics.vLine(x + w, y - 2, y + h, 0xFFdaffff);
+        guiGraphics.fillGradient(RenderType.guiOverlay(), x, y, x + w, y + h, 0x669cd3ff, 0x669cd3ff, 0);
     }
 
     public final void switchToScreen(AEBaseScreen<?> screen) {
@@ -1053,7 +1076,7 @@ public abstract class AEBaseScreen<T extends AEBaseMenu> extends AbstractContain
             var item = part.getPartItem().asItem();
             var itemId = BuiltInRegistries.ITEM.getKey(item);
             return itemIndex.get(itemId);
-        } else if (target instanceof ItemMenuHost<?>menuHost) {
+        } else if (target instanceof ItemMenuHost<?> menuHost) {
             var item = menuHost.getItem();
             var itemId = BuiltInRegistries.ITEM.getKey(item);
             return itemIndex.get(itemId);

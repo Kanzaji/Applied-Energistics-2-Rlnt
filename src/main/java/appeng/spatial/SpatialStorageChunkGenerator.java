@@ -21,9 +21,8 @@ package appeng.spatial;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 
-import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import net.minecraft.core.BlockPos;
@@ -64,7 +63,7 @@ public class SpatialStorageChunkGenerator extends ChunkGenerator {
      * If it was not the same object, then the Object->ID lookup would fail since it uses an identity hashmap
      * internally.
      */
-    public static final Codec<SpatialStorageChunkGenerator> CODEC = RecordCodecBuilder.create(instance -> instance
+    public static final MapCodec<SpatialStorageChunkGenerator> CODEC = RecordCodecBuilder.mapCodec(instance -> instance
             .group(
                     RegistryOps.retrieveGetter(Registries.BIOME))
             .apply(instance, instance.stable(SpatialStorageChunkGenerator::new)));
@@ -85,7 +84,7 @@ public class SpatialStorageChunkGenerator extends ChunkGenerator {
     }
 
     @Override
-    protected Codec<? extends ChunkGenerator> codec() {
+    protected MapCodec<? extends ChunkGenerator> codec() {
         return CODEC;
     }
 
@@ -132,7 +131,7 @@ public class SpatialStorageChunkGenerator extends ChunkGenerator {
     }
 
     @Override
-    public CompletableFuture<ChunkAccess> fillFromNoise(Executor executor, Blender blender, RandomState randomState,
+    public CompletableFuture<ChunkAccess> fillFromNoise(Blender blender, RandomState randomState,
             StructureManager structureManager, ChunkAccess chunk) {
         return CompletableFuture.completedFuture(chunk);
     }

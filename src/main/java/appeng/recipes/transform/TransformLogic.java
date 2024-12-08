@@ -1,5 +1,6 @@
 package appeng.recipes.transform;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -9,7 +10,6 @@ import java.util.function.Predicate;
 
 import com.google.common.collect.Lists;
 
-import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -23,7 +23,8 @@ import net.neoforged.neoforge.client.event.RecipesUpdatedEvent;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 
-import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import it.unimi.dsi.fastutil.objects.Reference2IntMap;
+import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
 
 public final class TransformLogic {
     public static boolean canTransformInFluid(ItemEntity entity, FluidState fluid) {
@@ -46,7 +47,7 @@ public final class TransformLogic {
         List<ItemEntity> itemEntities = level.getEntities(null, region).stream()
                 .filter(e -> e instanceof ItemEntity && !e.isRemoved()).map(e -> (ItemEntity) e).toList();
 
-        for (var holder : level.getRecipeManager().byType(TransformRecipe.TYPE).values()) {
+        for (var holder : level.getRecipeManager().byType(TransformRecipe.TYPE)) {
             var recipe = holder.value();
             if (!circumstancePredicate.test(recipe.circumstance))
                 continue;
@@ -55,40 +56,42 @@ public final class TransformLogic {
                 continue;
 
             List<Ingredient> missingIngredients = Lists.newArrayList(recipe.ingredients);
-            Set<ItemEntity> selectedEntities = new ReferenceOpenHashSet<>(missingIngredients.size());
+            Reference2IntMap<ItemEntity> consumedItems = new Reference2IntOpenHashMap<>(missingIngredients.size());
 
             if (recipe.circumstance.isExplosion()) {
                 if (missingIngredients.stream().noneMatch(i -> i.test(entity.getItem())))
                     continue;
             } else {
-                if (!missingIngredients.get(0).test(entity.getItem()))
+                if (!missingIngredients.getFirst().test(entity.getItem()))
                     continue;
             }
 
             for (var itemEntity : itemEntities) {
-                final ItemStack other = itemEntity.getItem();
+                var other = itemEntity.getItem();
                 if (!other.isEmpty()) {
                     for (var it = missingIngredients.iterator(); it.hasNext();) {
                         Ingredient ing = it.next();
-                        if (ing.test(other)) {
-                            selectedEntities.add(itemEntity);
+                        var alreadyClaimed = consumedItems.getInt(itemEntity);
+                        if (ing.test(other) && other.getCount() - alreadyClaimed > 0) {
+                            consumedItems.merge(itemEntity, 1, Integer::sum);
                             it.remove();
-                            break;
                         }
                     }
                 }
             }
 
             if (missingIngredients.isEmpty()) {
-                SimpleContainer recipeContainer = new SimpleContainer(selectedEntities.size());
-                int i = 0;
-                for (var e : selectedEntities) {
-                    recipeContainer.setItem(i++, e.getItem().split(1));
+                var items = new ArrayList<ItemStack>(consumedItems.size());
+                for (var e : consumedItems.reference2IntEntrySet()) {
+                    var itemEntity = e.getKey();
+                    items.add(itemEntity.getItem().split(e.getIntValue()));
 
-                    if (e.getItem().getCount() <= 0) {
-                        e.discard();
+                    if (itemEntity.getItem().getCount() <= 0) {
+                        itemEntity.discard();
                     }
                 }
+                var recipeInput = new TransformRecipeInput(items);
+                var craftResult = recipe.assemble(recipeInput, level.registryAccess());
 
                 var random = level.getRandom();
                 final double x = Math.floor(entity.getX()) + .25d + random.nextDouble() * .5;
@@ -98,8 +101,7 @@ public final class TransformLogic {
                 final double ySpeed = random.nextDouble() * .25 - 0.125;
                 final double zSpeed = random.nextDouble() * .25 - 0.125;
 
-                final ItemEntity newEntity = new ItemEntity(level, x, y, z,
-                        recipe.assemble(recipeContainer, level.registryAccess()));
+                final ItemEntity newEntity = new ItemEntity(level, x, y, z, craftResult);
 
                 newEntity.setDeltaMovement(xSpeed, ySpeed, zSpeed);
                 level.addFreshEntity(newEntity);

@@ -1,10 +1,9 @@
 package appeng.client.gui.me.common;
 
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.entity.ItemRenderer;
 import net.minecraft.network.chat.Component;
 
 import appeng.client.gui.AESubScreen;
+import appeng.client.gui.Icon;
 import appeng.client.gui.widgets.AECheckbox;
 import appeng.client.gui.widgets.TabButton;
 import appeng.core.localization.GuiText;
@@ -25,7 +24,6 @@ public class TerminalSettingsScreen<C extends MEStorageMenu> extends AESubScreen
     private final AECheckbox autoFocusCheckbox;
     private final AECheckbox syncWithExternalCheckbox;
     private final AECheckbox clearExternalCheckbox;
-    private final AECheckbox searchTooltipsCheckbox;
 
     public TerminalSettingsScreen(MEStorageScreen<C> parent) {
         super(parent, "/screens/terminals/terminal_settings.json");
@@ -58,8 +56,6 @@ public class TerminalSettingsScreen<C extends MEStorageMenu> extends AESubScreen
         useExternalSearchRadio.setRadio(true);
         useExternalSearchRadio.active = hasExternalSearch;
 
-        searchTooltipsCheckbox = widgets.addCheckbox("searchTooltipsCheckbox",
-                GuiText.SearchSettingsSearchTooltips.text(), this::save);
         rememberCheckbox = widgets.addCheckbox("rememberCheckbox", GuiText.SearchSettingsRememberSearch.text(),
                 this::save);
         autoFocusCheckbox = widgets.addCheckbox("autoFocusCheckbox", GuiText.SearchSettingsAutoFocus.text(),
@@ -94,10 +90,8 @@ public class TerminalSettingsScreen<C extends MEStorageMenu> extends AESubScreen
     }
 
     private void addBackButton() {
-        var icon = menu.getHost().getMainMenuIcon();
-        var label = icon.getHoverName();
-        ItemRenderer itemRenderer = Minecraft.getInstance().getItemRenderer();
-        TabButton button = new TabButton(icon, label, btn -> returnToParent());
+        var label = menu.getHost().getMainMenuIcon().getHoverName();
+        TabButton button = new TabButton(Icon.BACK, label, btn -> returnToParent());
         widgets.add("back", button);
     }
 
@@ -112,7 +106,6 @@ public class TerminalSettingsScreen<C extends MEStorageMenu> extends AESubScreen
         autoFocusCheckbox.setSelected(config.isAutoFocusSearch());
         syncWithExternalCheckbox.setSelected(config.isSyncWithExternalSearch());
         clearExternalCheckbox.setSelected(config.isClearExternalSearchOnOpen());
-        searchTooltipsCheckbox.setSelected(config.isSearchTooltips());
 
         rememberCheckbox.visible = useInternalSearchRadio.isSelected();
         autoFocusCheckbox.visible = useInternalSearchRadio.isSelected();
@@ -127,7 +120,6 @@ public class TerminalSettingsScreen<C extends MEStorageMenu> extends AESubScreen
         config.setAutoFocusSearch(autoFocusCheckbox.isSelected());
         config.setSyncWithExternalSearch(syncWithExternalCheckbox.isSelected());
         config.setClearExternalSearchOnOpen(clearExternalCheckbox.isSelected());
-        config.setSearchTooltips(searchTooltipsCheckbox.isSelected());
         config.setPinAutoCraftedItems(pinAutoCraftedItemsCheckbox.isSelected());
         config.setNotifyForFinishedCraftingJobs(notifyForFinishedCraftingJobsCheckbox.isSelected());
         config.setClearGridOnClose(clearGridOnCloseCheckbox.isSelected());

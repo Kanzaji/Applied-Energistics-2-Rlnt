@@ -10,9 +10,10 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import appeng.api.parts.IPartHost;
-import appeng.core.network.NetworkHandler;
+import appeng.core.network.ServerboundPacket;
 import appeng.core.network.serverbound.PartLeftClickPacket;
 import appeng.util.InteractionUtil;
 
@@ -45,7 +46,6 @@ public final class BlockAttackHook {
         var result = onBlockAttackedOnClient(event.getEntity(), level);
         if (result != InteractionResult.PASS) {
             event.setCanceled(true);
-            event.setCancellationResult(result);
         }
     }
 
@@ -95,7 +95,8 @@ public final class BlockAttackHook {
             }
 
             if (activated) {
-                NetworkHandler.instance().sendToServer(new PartLeftClickPacket(hitResult, alternateUseMode));
+                ServerboundPacket message = new PartLeftClickPacket(hitResult, alternateUseMode);
+                PacketDistributor.sendToServer(message);
                 // Do not perform the default action (of spawning break particles and breaking the block)
                 return true;
             }

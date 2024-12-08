@@ -24,6 +24,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.PackOutput;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Items;
@@ -48,19 +49,18 @@ public class ItemTagsProvider extends net.minecraft.data.tags.ItemTagsProvider i
     }
 
     @Override
-    protected void addTags(HolderLookup.Provider provider) {
+    protected void addTags(HolderLookup.Provider registries) {
         copyBlockTags();
 
-        // Forge is missing this tag right now
-        tag(ConventionTags.COPPER_INGOT)
-                .add(Items.COPPER_INGOT);
+        // Allow the annihilation plane to be enchanted with silk touch, fortune, efficiency & unbreaking
+        tag(ItemTags.DURABILITY_ENCHANTABLE).add(AEParts.ANNIHILATION_PLANE.asItem());
+        tag(ItemTags.MINING_ENCHANTABLE).add(AEParts.ANNIHILATION_PLANE.asItem());
+        tag(ItemTags.MINING_LOOT_ENCHANTABLE).add(AEParts.ANNIHILATION_PLANE.asItem());
 
         // Provide empty blacklist tags
         tag(AETags.ANNIHILATION_PLANE_ITEM_BLACKLIST);
 
-        // Only provide amethyst in the budding tag since that's the one we use; the other tags are for other mods
         tag(ConventionTags.BUDDING_BLOCKS)
-                .add(Items.BUDDING_AMETHYST)
                 .add(AEBlocks.FLAWLESS_BUDDING_QUARTZ.asItem())
                 .add(AEBlocks.FLAWED_BUDDING_QUARTZ.asItem())
                 .add(AEBlocks.CHIPPED_BUDDING_QUARTZ.asItem())
@@ -76,6 +76,8 @@ public class ItemTagsProvider extends net.minecraft.data.tags.ItemTagsProvider i
                 .add(AEItems.CERTUS_QUARTZ_DUST.asItem());
         tag(ConventionTags.ENDER_PEARL_DUST)
                 .add(AEItems.ENDER_DUST.asItem());
+        tag(ConventionTags.SKY_STONE_DUST)
+                .add(AEItems.SKY_DUST.asItem());
 
         tag(ConventionTags.ALL_QUARTZ_DUST)
                 .addTag(ConventionTags.CERTUS_QUARTZ_DUST);
@@ -108,6 +110,7 @@ public class ItemTagsProvider extends net.minecraft.data.tags.ItemTagsProvider i
 
         for (AEColor color : AEColor.VALID_COLORS) {
             tag(ConventionTags.PAINT_BALLS).add(AEItems.COLORED_PAINT_BALL.item(color));
+            tag(ConventionTags.LUMEN_PAINT_BALLS).add(AEItems.COLORED_LUMEN_PAINT_BALL.item(color));
         }
 
         tag(ConventionTags.SILICON)
@@ -162,13 +165,13 @@ public class ItemTagsProvider extends net.minecraft.data.tags.ItemTagsProvider i
                 AEItems.NETWORK_TOOL.asItem());
 
         tag(AETags.METAL_INGOTS)
-                .addOptionalTag(new ResourceLocation("forge:ingots/copper"))
-                .addOptionalTag(new ResourceLocation("forge:ingots/tin"))
-                .addOptionalTag(new ResourceLocation("forge:ingots/iron"))
-                .addOptionalTag(new ResourceLocation("forge:ingots/gold"))
-                .addOptionalTag(new ResourceLocation("forge:ingots/brass"))
-                .addOptionalTag(new ResourceLocation("forge:ingots/nickel"))
-                .addOptionalTag(new ResourceLocation("forge:ingots/aluminium"));
+                .addOptionalTag(ResourceLocation.parse("c:ingots/copper"))
+                .addOptionalTag(ResourceLocation.parse("c:ingots/tin"))
+                .addOptionalTag(ResourceLocation.parse("c:ingots/iron"))
+                .addOptionalTag(ResourceLocation.parse("c:ingots/gold"))
+                .addOptionalTag(ResourceLocation.parse("c:ingots/brass"))
+                .addOptionalTag(ResourceLocation.parse("c:ingots/nickel"))
+                .addOptionalTag(ResourceLocation.parse("c:ingots/aluminium"));
 
         tag(ConventionTags.PATTERN_PROVIDER)
                 .add(AEParts.PATTERN_PROVIDER.asItem())
@@ -228,7 +231,7 @@ public class ItemTagsProvider extends net.minecraft.data.tags.ItemTagsProvider i
         tag(ConventionTags.CAN_REMOVE_COLOR).add(Items.WATER_BUCKET, Items.SNOWBALL);
 
         // Manually add tags for mods that are unlikely to do it themselves since we don't want to force users to craft
-        tag(ConventionTags.WRENCH).addOptional(new ResourceLocation("immersiveengineering:hammer"));
+        tag(ConventionTags.WRENCH).addOptional(ResourceLocation.parse("immersiveengineering:hammer"));
 
         addP2pAttunementTags();
     }
@@ -237,7 +240,10 @@ public class ItemTagsProvider extends net.minecraft.data.tags.ItemTagsProvider i
     // Assumes that items or item tags generally have the same name as the block equivalent.
     private void copyBlockTags() {
         mirrorBlockTag(Tags.Blocks.STORAGE_BLOCKS.location());
-        mirrorBlockTag(new ResourceLocation("forge:storage_blocks/certus_quartz"));
+        mirrorBlockTag(ResourceLocation.parse("c:storage_blocks/certus_quartz"));
+        copy(BlockTags.WALLS, ItemTags.WALLS);
+        copy(Tags.Blocks.CHESTS, Tags.Items.CHESTS);
+        copy(ConventionTags.GLASS_BLOCK, ConventionTags.GLASS);
     }
 
     private void mirrorBlockTag(ResourceLocation tagName) {

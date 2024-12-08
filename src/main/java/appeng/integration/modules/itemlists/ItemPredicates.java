@@ -2,6 +2,7 @@ package appeng.integration.modules.itemlists;
 
 import net.minecraft.world.item.ItemStack;
 
+import appeng.api.ids.AEComponents;
 import appeng.api.util.AEColor;
 import appeng.core.AEConfig;
 import appeng.core.definitions.AEBlocks;
@@ -34,15 +35,16 @@ public final class ItemPredicates {
     }
 
     private static boolean isInternal(ItemStack stack) {
-        return AEItems.WRAPPED_GENERIC_STACK.isSameAs(stack)
+        return AEItems.WRAPPED_GENERIC_STACK.is(stack)
+                || AEItems.MISSING_CONTENT.is(stack)
                 || isBrokenFacade(stack) // REI will add a broken facade with no NBT
-                || AEBlocks.CABLE_BUS.isSameAs(stack)
-                || AEBlocks.MATRIX_FRAME.isSameAs(stack)
-                || AEBlocks.PAINT.isSameAs(stack);
+                || AEBlocks.CABLE_BUS.is(stack)
+                || AEBlocks.MATRIX_FRAME.is(stack)
+                || AEBlocks.PAINT.is(stack);
     }
 
     private static boolean isBrokenFacade(ItemStack stack) {
-        return stack.getItem() instanceof FacadeItem && !stack.hasTag();
+        return stack.getItem() instanceof FacadeItem && !stack.has(AEComponents.FACADE_ITEM);
     }
 
     private static boolean isFacade(ItemStack stack) {
@@ -50,14 +52,14 @@ public final class ItemPredicates {
     }
 
     private static boolean isDeveloperTool(ItemStack stack) {
-        return AEBlocks.DEBUG_CUBE_GEN.isSameAs(stack) ||
-                AEBlocks.DEBUG_ENERGY_GEN.isSameAs(stack) ||
-                AEBlocks.DEBUG_ITEM_GEN.isSameAs(stack) ||
-                AEBlocks.DEBUG_PHANTOM_NODE.isSameAs(stack) ||
-                AEItems.DEBUG_CARD.isSameAs(stack) ||
-                AEItems.DEBUG_ERASER.isSameAs(stack) ||
-                AEItems.DEBUG_METEORITE_PLACER.isSameAs(stack) ||
-                AEItems.DEBUG_REPLICATOR_CARD.isSameAs(stack);
+        return AEBlocks.DEBUG_CUBE_GEN.is(stack) ||
+                AEBlocks.DEBUG_ENERGY_GEN.is(stack) ||
+                AEBlocks.DEBUG_ITEM_GEN.is(stack) ||
+                AEBlocks.DEBUG_PHANTOM_NODE.is(stack) ||
+                AEItems.DEBUG_CARD.is(stack) ||
+                AEItems.DEBUG_ERASER.is(stack) ||
+                AEItems.DEBUG_METEORITE_PLACER.is(stack) ||
+                AEItems.DEBUG_REPLICATOR_CARD.is(stack);
     }
 
     private static boolean isColoredCable(ItemStack stack) {

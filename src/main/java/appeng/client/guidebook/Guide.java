@@ -42,10 +42,11 @@ import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.level.validation.DirectoryValidator;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.TickEvent;
+import net.neoforged.neoforge.resource.ResourcePackLoader;
 
 import appeng.client.guidebook.compiler.PageCompiler;
 import appeng.client.guidebook.compiler.ParsedGuidePage;
@@ -157,9 +158,8 @@ public final class Guide implements PageCollection {
 
             PackRepository packRepository = new PackRepository(
                     new ServerPacksSource(new DirectoryValidator(path -> false)));
-            net.neoforged.neoforge.resource.ResourcePackLoader.loadResourcePacks(packRepository,
-                    map -> net.neoforged.neoforge.resource.ResourcePackLoader.buildPackFinder(map,
-                            PackType.SERVER_DATA));
+            // This fires AddPackFindersEvent but it's probably ok.
+            ResourcePackLoader.populatePackRepository(packRepository, PackType.SERVER_DATA, true);
             packRepository.reload();
             packRepository.setSelected(packRepository.getAvailableIds());
 
@@ -174,7 +174,7 @@ public final class Guide implements PageCollection {
 
             var stuff = ReloadableServerResources.loadResources(
                     resourceManager,
-                    layeredAccess.getAccessForLoading(RegistryLayer.RELOADABLE),
+                    layeredAccess,
                     FeatureFlagSet.of(),
                     Commands.CommandSelection.ALL,
                     0,
@@ -187,7 +187,7 @@ public final class Guide implements PageCollection {
                             throw e;
                         }
                     }).get();
-            stuff.updateRegistryTags(layeredAccess.compositeAccess());
+            stuff.updateRegistryTags();
             Platform.fallbackClientRecipeManager = stuff.getRecipeManager();
             Platform.fallbackClientRegistryAccess = layeredAccess.compositeAccess();
         } catch (Exception e) {
@@ -239,7 +239,7 @@ public final class Guide implements PageCollection {
         }
 
         // Transform id such that the path is prefixed with "ae2assets", the source folder for the guidebook assets
-        id = new ResourceLocation(id.getNamespace(), folder + "/" + id.getPath());
+        id = ResourceLocation.fromNamespaceAndPath(id.getNamespace(), folder + "/" + id.getPath());
 
         var resource = Minecraft.getInstance().getResourceManager().getResource(id).orElse(null);
         if (resource == null) {
@@ -280,6 +280,11 @@ public final class Guide implements PageCollection {
         return null;
     }
 
+    @Nullable
+    public Path getDevelopmentSourceFolder() {
+        return developmentSourceFolder;
+    }
+
     public ExtensionCollection getExtensions() {
         return extensions;
     }
@@ -301,7 +306,7 @@ public final class Guide implements PageCollection {
                     location -> location.getPath().endsWith(".md"));
 
             for (var entry : resources.entrySet()) {
-                var pageId = new ResourceLocation(
+                var pageId = ResourceLocation.fromNamespaceAndPath(
                         entry.getKey().getNamespace(),
                         entry.getKey().getPath().substring((folder + "/").length()));
 
@@ -345,12 +350,10 @@ public final class Guide implements PageCollection {
     private void watchDevelopmentSources() {
         var watcher = new GuideSourceWatcher(developmentSourceNamespace, developmentSourceFolder);
 
-        NeoForge.EVENT_BUS.addListener((TickEvent.ClientTickEvent evt) -> {
-            if (evt.phase == TickEvent.Phase.START) {
-                var changes = watcher.takeChanges();
-                if (!changes.isEmpty()) {
-                    applyChanges(changes);
-                }
+        NeoForge.EVENT_BUS.addListener((ClientTickEvent.Pre evt) -> {
+            var changes = watcher.takeChanges();
+            if (!changes.isEmpty()) {
+                applyChanges(changes);
             }
         });
         Runtime.getRuntime().addShutdownHook(new Thread(watcher::close));
@@ -428,10 +431,10 @@ public final class Guide implements PageCollection {
             this.folder = Objects.requireNonNull(folder, "folder");
 
             // Both folder and default namespace need to be valid resource paths
-            if (!ResourceLocation.isValidResourceLocation(defaultNamespace + ":dummy")) {
+            if (!ResourceLocation.isValidNamespace(defaultNamespace)) {
                 throw new IllegalArgumentException("The default namespace for a guide needs to be a valid namespace");
             }
-            if (!ResourceLocation.isValidResourceLocation("dummy:" + folder)) {
+            if (!ResourceLocation.isValidPath(folder)) {
                 throw new IllegalArgumentException("The folder for a guide needs to be a valid resource location");
             }
 
@@ -439,7 +442,7 @@ public final class Guide implements PageCollection {
             try {
                 var startupPageIdText = System.getProperty(startupPageProperty);
                 if (startupPageIdText != null) {
-                    this.startupPage = new ResourceLocation(startupPageIdText);
+                    this.startupPage = ResourceLocation.parse(startupPageIdText);
                 }
             } catch (Exception e) {
                 LOGGER.error("Specified invalid page id in system property {}", startupPageProperty);
@@ -644,7 +647,8 @@ public final class Guide implements PageCollection {
 
     private void registerReloadListener(IEventBus modEventBus) {
         modEventBus.addListener((RegisterClientReloadListenersEvent evt) -> {
-            evt.registerReloadListener(new ReloadListener(new ResourceLocation(defaultNamespace, folder)));
+            evt.registerReloadListener(
+                    new ReloadListener(ResourceLocation.fromNamespaceAndPath(defaultNamespace, folder)));
         });
     }
 }

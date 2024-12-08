@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
@@ -72,7 +73,7 @@ final class CompassRegion extends AESavedData {
                 getRegionSaveName(regionX, regionZ));
     }
 
-    public static CompassRegion load(CompoundTag nbt) {
+    public static CompassRegion load(CompoundTag nbt, HolderLookup.Provider registries) {
         var result = new CompassRegion();
         for (String key : nbt.getAllKeys()) {
             if (key.startsWith("section")) {
@@ -90,7 +91,7 @@ final class CompassRegion extends AESavedData {
     }
 
     @Override
-    public CompoundTag save(CompoundTag compound) {
+    public CompoundTag save(CompoundTag compound, HolderLookup.Provider registries) {
         for (var entry : sections.entrySet()) {
             var key = "section" + entry.getKey();
             if (entry.getValue().isEmpty()) {
@@ -101,7 +102,7 @@ final class CompassRegion extends AESavedData {
         return compound;
     }
 
-    boolean hasSkyStone(int cx, int cz) {
+    boolean hasCompassTarget(int cx, int cz) {
         var bitmapIndex = getBitmapIndex(cx, cz);
         for (BitSet bitmap : sections.values()) {
             if (bitmap.get(bitmapIndex)) {
@@ -111,7 +112,7 @@ final class CompassRegion extends AESavedData {
         return false;
     }
 
-    boolean hasSkyStone(int cx, int cz, int sectionIndex) {
+    boolean hasCompassTarget(int cx, int cz, int sectionIndex) {
         var bitmapIndex = getBitmapIndex(cx, cz);
         var section = sections.get(sectionIndex);
         if (section != null) {
@@ -120,22 +121,22 @@ final class CompassRegion extends AESavedData {
         return false;
     }
 
-    void setHasSkyStone(int cx, int cz, int sectionIndex, boolean hasSkyStone) {
+    void setHasCompassTarget(int cx, int cz, int sectionIndex, boolean hasTarget) {
         var bitmapIndex = getBitmapIndex(cx, cz);
         var section = sections.get(sectionIndex);
         if (section == null) {
-            if (hasSkyStone) {
+            if (hasTarget) {
                 section = new BitSet(BITMAP_LENGTH);
                 section.set(bitmapIndex);
                 sections.put(sectionIndex, section);
                 setDirty();
             }
         } else {
-            if (section.get(bitmapIndex) != hasSkyStone) {
+            if (section.get(bitmapIndex) != hasTarget) {
                 setDirty();
             }
             // There already was data on this y-section in this region
-            if (!hasSkyStone) {
+            if (!hasTarget) {
                 section.clear(bitmapIndex);
                 if (section.isEmpty()) {
                     sections.remove(sectionIndex);

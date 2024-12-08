@@ -93,7 +93,7 @@ public final class P2PTunnelAttunement {
             throw new IllegalArgumentException("Tunnel item must be registered first.");
         }
         return TagKey.create(Registries.ITEM,
-                new ResourceLocation(itemKey.getNamespace(), "p2p_attunements/" + itemKey.getPath()));
+                ResourceLocation.fromNamespaceAndPath(itemKey.getNamespace(), "p2p_attunements/" + itemKey.getPath()));
     }
 
     /**
@@ -147,7 +147,7 @@ public final class P2PTunnelAttunement {
         Objects.requireNonNull(itemLike, "item");
         var item = itemLike.asItem();
         Objects.requireNonNull(item, "item");
-        if (!(item instanceof PartItem<?>partItem)) {
+        if (!(item instanceof PartItem<?> partItem)) {
             throw new IllegalArgumentException("Given tunnel part item is not a part");
         }
 

@@ -28,8 +28,9 @@ import com.google.common.collect.Multiset;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -54,16 +55,14 @@ import appeng.api.util.AEColor;
 import appeng.api.util.DimensionalBlockPos;
 import appeng.api.util.IConfigManager;
 import appeng.api.util.IConfigurableObject;
-import appeng.blockentity.grid.AENetworkBlockEntity;
+import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.client.render.overlay.IOverlayDataSource;
 import appeng.client.render.overlay.OverlayManager;
 import appeng.me.service.StatisticsService;
 import appeng.server.services.ChunkLoadingService;
-import appeng.util.ConfigManager;
-import appeng.util.IConfigManagerListener;
 
-public class SpatialAnchorBlockEntity extends AENetworkBlockEntity
-        implements IGridTickable, IConfigManagerListener, IConfigurableObject, IOverlayDataSource {
+public class SpatialAnchorBlockEntity extends AENetworkedBlockEntity
+        implements IGridTickable, IConfigurableObject, IOverlayDataSource {
 
     static {
         GridHelper.addNodeOwnerEventHandler(GridChunkAdded.class, SpatialAnchorBlockEntity.class,
@@ -79,7 +78,7 @@ public class SpatialAnchorBlockEntity extends AENetworkBlockEntity
      */
     private static final int SPATIAL_TRANSFER_TEMPORARY_CHUNK_RANGE = 4;
 
-    private final ConfigManager manager = new ConfigManager(this);
+    private final IConfigManager manager;
     private final Set<ChunkPos> chunks = new HashSet<>();
     private int powerlessTicks = 0;
     private boolean initialized = false;
@@ -90,23 +89,26 @@ public class SpatialAnchorBlockEntity extends AENetworkBlockEntity
         super(blockEntityType, pos, blockState);
         getMainNode().setFlags(GridFlags.REQUIRE_CHANNEL)
                 .addService(IGridTickable.class, this);
-        this.manager.registerSetting(Settings.OVERLAY_MODE, YesNo.NO);
+
+        this.manager = IConfigManager.builder(this::onSettingChanged)
+                .registerSetting(Settings.OVERLAY_MODE, YesNo.NO)
+                .build();
     }
 
     @Override
-    public void saveAdditional(CompoundTag data) {
-        super.saveAdditional(data);
-        this.manager.writeToNBT(data);
+    public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
+        super.saveAdditional(data, registries);
+        this.manager.writeToNBT(data, registries);
     }
 
     @Override
-    public void loadTag(CompoundTag data) {
-        super.loadTag(data);
-        this.manager.readFromNBT(data);
+    public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
+        super.loadTag(data, registries);
+        this.manager.readFromNBT(data, registries);
     }
 
     @Override
-    protected void writeToStream(FriendlyByteBuf data) {
+    protected void writeToStream(RegistryFriendlyByteBuf data) {
         super.writeToStream(data);
         data.writeBoolean(this.isActive());
         data.writeBoolean(displayOverlay);
@@ -116,7 +118,7 @@ public class SpatialAnchorBlockEntity extends AENetworkBlockEntity
     }
 
     @Override
-    protected boolean readFromStream(FriendlyByteBuf data) {
+    protected boolean readFromStream(RegistryFriendlyByteBuf data) {
         boolean ret = super.readFromStream(data);
 
         final boolean isActive = data.readBoolean();
@@ -189,8 +191,7 @@ public class SpatialAnchorBlockEntity extends AENetworkBlockEntity
         this.wakeUp();
     }
 
-    @Override
-    public void onSettingChanged(IConfigManager manager, Setting<?> setting) {
+    private void onSettingChanged(IConfigManager manager, Setting<?> setting) {
         if (setting == Settings.OVERLAY_MODE) {
             this.displayOverlay = manager.getSetting(setting) == YesNo.YES;
             this.markForUpdate();
@@ -337,12 +338,10 @@ public class SpatialAnchorBlockEntity extends AENetworkBlockEntity
         ServerLevel level = this.getServerLevel();
         boolean forced = ChunkLoadingService.getInstance().forceChunk(level, this.getBlockPos(), chunkPos);
 
-        if (forced) {
-            this.chunks.add(chunkPos);
+        if (forced && this.chunks.add(chunkPos)) {
+            this.updatePowerConsumption();
+            markForClientUpdate();
         }
-
-        this.updatePowerConsumption();
-        this.markForUpdate();
 
         return forced;
     }
@@ -351,12 +350,10 @@ public class SpatialAnchorBlockEntity extends AENetworkBlockEntity
         ServerLevel level = this.getServerLevel();
         boolean removed = ChunkLoadingService.getInstance().releaseChunk(level, this.getBlockPos(), chunkPos);
 
-        if (removed && remove) {
-            this.chunks.remove(chunkPos);
+        if (removed && remove && this.chunks.remove(chunkPos)) {
+            this.updatePowerConsumption();
+            markForClientUpdate();
         }
-
-        this.updatePowerConsumption();
-        this.markForUpdate();
 
         return removed;
     }

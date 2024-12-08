@@ -24,6 +24,7 @@ import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -39,14 +40,14 @@ import appeng.api.networking.IManagedGridNode;
 import appeng.api.upgrades.IUpgradeableObject;
 import appeng.api.util.AECableType;
 import appeng.api.util.IConfigurableObject;
-import appeng.blockentity.grid.AENetworkBlockEntity;
+import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.core.definitions.AEBlocks;
 import appeng.helpers.IPriorityHost;
 import appeng.helpers.InterfaceLogic;
 import appeng.helpers.InterfaceLogicHost;
 import appeng.me.helpers.BlockEntityNodeListener;
 
-public class InterfaceBlockEntity extends AENetworkBlockEntity
+public class InterfaceBlockEntity extends AENetworkedBlockEntity
         implements IPriorityHost, IUpgradeableObject, IConfigurableObject, InterfaceLogicHost {
 
     private static final IGridNodeListener<InterfaceBlockEntity> NODE_LISTENER = new BlockEntityNodeListener<>() {
@@ -91,15 +92,15 @@ public class InterfaceBlockEntity extends AENetworkBlockEntity
     }
 
     @Override
-    public void saveAdditional(CompoundTag data) {
-        super.saveAdditional(data);
-        this.logic.writeToNBT(data);
+    public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
+        super.saveAdditional(data, registries);
+        this.logic.writeToNBT(data, registries);
     }
 
     @Override
-    public void loadTag(CompoundTag data) {
-        super.loadTag(data);
-        this.logic.readFromNBT(data);
+    public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
+        super.loadTag(data, registries);
+        this.logic.readFromNBT(data, registries);
     }
 
     @Override

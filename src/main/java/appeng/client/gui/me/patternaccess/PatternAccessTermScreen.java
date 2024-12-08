@@ -45,6 +45,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 
@@ -67,7 +68,6 @@ import appeng.client.guidebook.render.SimpleRenderContext;
 import appeng.core.AEConfig;
 import appeng.core.AppEng;
 import appeng.core.localization.GuiText;
-import appeng.core.network.NetworkHandler;
 import appeng.core.network.serverbound.InventoryActionPacket;
 import appeng.helpers.InventoryAction;
 import appeng.menu.implementations.PatternAccessTermMenu;
@@ -82,7 +82,7 @@ public class PatternAccessTermScreen<C extends PatternAccessTermMenu> extends AE
     private static final int GUI_PADDING_Y = 6;
 
     private static final int GUI_HEADER_HEIGHT = 17;
-    private static final int GUI_FOOTER_HEIGHT = 97;
+    private static final int GUI_FOOTER_HEIGHT = 99;
     private static final int COLUMNS = 9;
 
     /**
@@ -144,7 +144,7 @@ public class PatternAccessTermScreen<C extends PatternAccessTermMenu> extends AE
     public PatternAccessTermScreen(C menu, Inventory playerInventory,
             Component title, ScreenStyle style) {
         super(menu, playerInventory, title, style);
-        this.scrollbar = widgets.addScrollBar("scrollbar");
+        this.scrollbar = widgets.addScrollBar("scrollbar", Scrollbar.BIG);
         this.imageWidth = GUI_WIDTH;
 
         // Add a terminalstyle button
@@ -164,8 +164,8 @@ public class PatternAccessTermScreen<C extends PatternAccessTermMenu> extends AE
 
     @Override
     public void init() {
-        this.visibleRows = config.getTerminalStyle().getRows(
-                (this.height - GUI_HEADER_HEIGHT - GUI_FOOTER_HEIGHT - GUI_TOP_AND_BOTTOM_PADDING) / ROW_HEIGHT);
+        this.visibleRows = Math.max(2, config.getTerminalStyle().getRows(
+                (this.height - GUI_HEADER_HEIGHT - GUI_FOOTER_HEIGHT - GUI_TOP_AND_BOTTOM_PADDING) / ROW_HEIGHT));
         // Render inventory in correct place.
         this.imageHeight = GUI_HEADER_HEIGHT + GUI_FOOTER_HEIGHT + this.visibleRows * ROW_HEIGHT;
 
@@ -205,7 +205,7 @@ public class PatternAccessTermScreen<C extends PatternAccessTermMenu> extends AE
 
                         // Indicate invalid patterns
                         var pattern = container.getInventory().getStackInSlot(slotsRow.offset + col);
-                        if (!pattern.isEmpty() && PatternDetailsHelper.decodePattern(pattern, level, false) == null) {
+                        if (!pattern.isEmpty() && PatternDetailsHelper.decodePattern(pattern, level) == null) {
                             guiGraphics.fill(
                                     slot.x,
                                     slot.y,
@@ -343,7 +343,7 @@ public class PatternAccessTermScreen<C extends PatternAccessTermMenu> extends AE
                 PatternSlot machineSlot = (PatternSlot) slot;
                 final InventoryActionPacket p = new InventoryActionPacket(action, machineSlot.slot,
                         machineSlot.getMachineInv().getServerId());
-                NetworkHandler.instance().sendToServer(p);
+                PacketDistributor.sendToServer(p);
             }
 
             return;
@@ -549,6 +549,7 @@ public class PatternAccessTermScreen<C extends PatternAccessTermMenu> extends AE
         var level = menu.getPlayer().level();
         var text = new StringBuilder();
         var pattern = PatternDetailsHelper.decodePattern(stack, level);
+
         if (pattern != null) {
             for (var output : pattern.getOutputs()) {
                 output.what().getDisplayName().visit(content -> {
@@ -616,6 +617,10 @@ public class PatternAccessTermScreen<C extends PatternAccessTermMenu> extends AE
         var texture = AppEng.makeId("textures/guis/patternaccessterminal.png");
         guiGraphics.blit(texture, offsetX, offsetY, srcRect.getX(), srcRect.getY(), srcRect.getWidth(),
                 srcRect.getHeight());
+    }
+
+    protected int getVisibleRows() {
+        return visibleRows;
     }
 
     sealed interface Row {

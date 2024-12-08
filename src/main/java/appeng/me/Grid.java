@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.MultimapBuilder;
@@ -35,6 +36,7 @@ import com.google.gson.stream.JsonWriter;
 import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.CrashReportCategory;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.Level;
 
@@ -46,7 +48,6 @@ import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IGridNodeListener;
 import appeng.api.networking.IGridService;
-import appeng.api.networking.IGridServiceProvider;
 import appeng.api.networking.crafting.ICraftingService;
 import appeng.api.networking.energy.IEnergyService;
 import appeng.api.networking.events.GridEvent;
@@ -56,6 +57,7 @@ import appeng.api.networking.storage.IStorageService;
 import appeng.api.networking.ticking.ITickManager;
 import appeng.core.AELog;
 import appeng.hooks.ticking.TickHandler;
+import appeng.me.helpers.GridServiceContainer;
 import appeng.me.service.P2PService;
 import appeng.parts.AEBasePart;
 import appeng.util.IDebugExportable;
@@ -69,7 +71,7 @@ public class Grid implements IGrid {
     private static int nextSerial = 0;
 
     private final SetMultimap<Class<?>, IGridNode> machines = MultimapBuilder.hashKeys().hashSetValues().build();
-    private final Map<Class<?>, IGridServiceProvider> services;
+    private final GridServiceContainer services;
     // Becomes null after the last node has left the grid.
     @Nullable
     private GridNode pivot;
@@ -101,17 +103,13 @@ public class Grid implements IGrid {
         return this.priority;
     }
 
-    Collection<IGridServiceProvider> getProviders() {
-        return this.services.values();
-    }
-
     @Override
     public int size() {
         return this.machines.size();
     }
 
     void remove(GridNode gridNode) {
-        for (var c : this.services.values()) {
+        for (var c : services.services().values()) {
             c.removeNode(gridNode);
         }
 
@@ -135,13 +133,13 @@ public class Grid implements IGrid {
         // track node.
         this.machines.put(gridNode.getOwner().getClass(), gridNode);
 
-        for (var service : this.services.values()) {
+        for (var service : services.services().values()) {
             service.addNode(gridNode, savedData);
         }
     }
 
     void saveNodeData(GridNode gridNode, CompoundTag savedData) {
-        for (var service : this.services.values()) {
+        for (var service : services.services().values()) {
             service.saveNodeData(gridNode, savedData);
         }
     }
@@ -149,7 +147,7 @@ public class Grid implements IGrid {
     @SuppressWarnings("unchecked")
     @Override
     public <C extends IGridService> C getService(Class<C> iface) {
-        var service = this.services.get(iface);
+        var service = this.services.services().get(iface);
         if (service == null) {
             throw new IllegalArgumentException("Service " + iface + " is not registered");
         }
@@ -222,7 +220,7 @@ public class Grid implements IGrid {
             return;
         }
 
-        for (var gc : this.services.values()) {
+        for (var gc : this.services.serverStartTickServices()) {
             gc.onServerStartTick();
         }
     }
@@ -232,7 +230,7 @@ public class Grid implements IGrid {
             return;
         }
 
-        for (var gc : this.services.values()) {
+        for (var gc : this.services.levelStartTickServices()) {
             gc.onLevelStartTick(level);
         }
     }
@@ -242,7 +240,7 @@ public class Grid implements IGrid {
             return;
         }
 
-        for (var gc : this.services.values()) {
+        for (var gc : this.services.levelEndtickServices()) {
             gc.onLevelEndTick(level);
         }
     }
@@ -252,7 +250,7 @@ public class Grid implements IGrid {
             return;
         }
 
-        for (var gc : this.services.values()) {
+        for (var gc : this.services.serverEndTickServices()) {
             gc.onServerEndTick();
         }
     }
@@ -320,8 +318,9 @@ public class Grid implements IGrid {
 
     @Override
     public void export(JsonWriter jsonWriter) throws IOException {
-        jsonWriter.beginObject();
+        var registries = pivot != null ? pivot.getLevel().registryAccess() : HolderLookup.Provider.create(Stream.of());
 
+        jsonWriter.beginObject();
         var properties = Map.of(
                 "id", serialNumber,
                 "disposed", pivot == null);
@@ -344,17 +343,17 @@ public class Grid implements IGrid {
         }
 
         jsonWriter.name("machines");
-        exportMachines(jsonWriter, machineIdMap, nodeIdMap);
+        exportMachines(jsonWriter, registries, machineIdMap, nodeIdMap);
 
         jsonWriter.name("nodes");
-        exportNodes(jsonWriter, machineIdMap, nodeIdMap);
+        exportNodes(jsonWriter, registries, machineIdMap, nodeIdMap);
 
         jsonWriter.name("services");
         jsonWriter.beginObject();
-        for (var entry : services.entrySet()) {
+        for (var entry : services.services().entrySet()) {
             jsonWriter.name(getServiceExportKey(entry.getKey()));
             jsonWriter.beginObject();
-            entry.getValue().debugDump(jsonWriter);
+            entry.getValue().debugDump(jsonWriter, registries);
             jsonWriter.endObject();
         }
         jsonWriter.endObject();
@@ -362,7 +361,8 @@ public class Grid implements IGrid {
         jsonWriter.endObject();
     }
 
-    private void exportMachines(JsonWriter jsonWriter, Reference2IntMap<Object> machineIds,
+    private void exportMachines(JsonWriter jsonWriter, HolderLookup.Provider registries,
+            Reference2IntMap<Object> machineIds,
             Reference2IntMap<IGridNode> nodeIds) throws IOException {
         jsonWriter.beginArray();
         for (var entry : machineIds.reference2IntEntrySet()) {
@@ -370,20 +370,21 @@ public class Grid implements IGrid {
             JsonStreamUtil.writeProperties(Map.of(
                     "id", entry.getIntValue()), jsonWriter);
             if (entry.getKey() instanceof IDebugExportable exportable) {
-                exportable.debugExport(jsonWriter, machineIds, nodeIds);
+                exportable.debugExport(jsonWriter, registries, machineIds, nodeIds);
             }
             jsonWriter.endObject();
         }
         jsonWriter.endArray();
     }
 
-    private void exportNodes(JsonWriter jsonWriter, Reference2IntMap<Object> machineIds,
+    private void exportNodes(JsonWriter jsonWriter, HolderLookup.Provider registries,
+            Reference2IntMap<Object> machineIds,
             Reference2IntMap<IGridNode> nodeIds) throws IOException {
         // Dump nodes
         jsonWriter.beginArray();
         for (var entry : nodeIds.reference2IntEntrySet()) {
             var node = entry.getKey();
-            ((GridNode) node).debugExport(jsonWriter, machineIds, nodeIds);
+            ((GridNode) node).debugExport(jsonWriter, registries, machineIds, nodeIds);
         }
         jsonWriter.endArray();
     }

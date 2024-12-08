@@ -1,10 +1,10 @@
 package appeng.integration.modules.itemlists;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.Tesselator;
 
+import org.joml.Matrix4fStack;
 import org.joml.Quaternionf;
 
 import net.minecraft.client.Minecraft;
@@ -30,6 +30,12 @@ public final class FluidBlockRendering {
     }
 
     public static void render(GuiGraphics guiGraphics, Fluid fluid, int x, int y, int width, int height) {
+        RenderSystem.runAsFancy(() -> {
+            renderInFancy(guiGraphics, fluid, x, y, width, height);
+        });
+    }
+
+    public static void renderInFancy(GuiGraphics guiGraphics, Fluid fluid, int x, int y, int width, int height) {
         var fluidState = fluid.defaultFluidState();
 
         var blockRenderer = Minecraft.getInstance().getBlockRenderer();
@@ -40,8 +46,8 @@ public final class FluidBlockRendering {
         RenderSystem.disableDepthTest();
 
         var worldMatStack = RenderSystem.getModelViewStack();
-        worldMatStack.pushPose();
-        worldMatStack.mulPoseMatrix(guiGraphics.pose().last().pose());
+        worldMatStack.pushMatrix();
+        worldMatStack.mul(guiGraphics.pose().last().pose());
         worldMatStack.translate(x, y, 0);
 
         FogRenderer.setupNoFog();
@@ -53,39 +59,38 @@ public final class FluidBlockRendering {
 
         setupOrthographicProjection(worldMatStack);
 
-        var tesselator = Tesselator.getInstance();
-        BufferBuilder builder = tesselator.getBuilder();
-        builder.begin(renderType.mode(), renderType.format());
+        var builder = Tesselator.getInstance().begin(renderType.mode(), renderType.format());
         blockRenderer.renderLiquid(
                 BlockPos.ZERO,
                 new FakeWorld(fluidState),
                 builder,
                 fluidState.createLegacyBlock(),
                 fluidState);
-        if (builder.building()) {
-            tesselator.end();
+        var meshData = builder.build();
+        if (meshData != null) {
+            BufferUploader.drawWithShader(meshData);
         }
 
         // Reset the render state and return to the previous modelview matrix
         renderType.clearRenderState();
-        worldMatStack.popPose();
+        worldMatStack.popMatrix();
         RenderSystem.applyModelViewMatrix();
     }
 
-    private static void setupOrthographicProjection(PoseStack worldMatStack) {
+    private static void setupOrthographicProjection(Matrix4fStack worldMatStack) {
         // Set up orthographic rendering for the block
         float angle = 36;
         float rotation = 45;
 
         worldMatStack.scale(1, 1, -1);
-        worldMatStack.mulPose(new Quaternionf().rotationY(Mth.DEG_TO_RAD * -180));
+        worldMatStack.rotate(new Quaternionf().rotationY(Mth.DEG_TO_RAD * -180));
 
         Quaternionf flip = new Quaternionf().rotationZ(Mth.DEG_TO_RAD * 180);
         flip.mul(new Quaternionf().rotationX(Mth.DEG_TO_RAD * angle));
 
         Quaternionf rotate = new Quaternionf().rotationY(Mth.DEG_TO_RAD * rotation);
-        worldMatStack.mulPose(flip);
-        worldMatStack.mulPose(rotate);
+        worldMatStack.rotate(flip);
+        worldMatStack.rotate(rotate);
 
         // Move into the center of the block for the transforms
         worldMatStack.translate(-0.5f, -0.5f, -0.5f);

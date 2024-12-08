@@ -38,12 +38,16 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.HitResult;
 import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.InterModComms;
+import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.fml.event.lifecycle.InterModEnqueueEvent;
 import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
@@ -54,12 +58,15 @@ import net.neoforged.neoforge.client.event.RegisterColorHandlersEvent;
 import net.neoforged.neoforge.client.event.RegisterDimensionSpecialEffectsEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent;
+import net.neoforged.neoforge.client.gui.ConfigurationScreen;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.TickEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import appeng.api.parts.CableRenderMode;
+import appeng.blockentity.networking.CableBusTESR;
 import appeng.client.EffectType;
 import appeng.client.Hotkeys;
 import appeng.client.commands.ClientCommands;
@@ -77,25 +84,41 @@ import appeng.client.guidebook.scene.PartAnnotationStrategy;
 import appeng.client.guidebook.screen.GlobalInMemoryHistory;
 import appeng.client.guidebook.screen.GuideScreen;
 import appeng.client.render.StorageCellClientTooltipComponent;
+import appeng.client.render.crafting.CraftingMonitorRenderer;
+import appeng.client.render.crafting.MolecularAssemblerRenderer;
+import appeng.client.render.effects.CraftingFx;
+import appeng.client.render.effects.EnergyFx;
 import appeng.client.render.effects.EnergyParticleData;
+import appeng.client.render.effects.LightningArcFX;
+import appeng.client.render.effects.LightningFX;
+import appeng.client.render.effects.MatterCannonFX;
 import appeng.client.render.effects.ParticleTypes;
+import appeng.client.render.effects.VibrantFX;
 import appeng.client.render.overlay.OverlayManager;
+import appeng.client.render.tesr.ChargerBlockEntityRenderer;
+import appeng.client.render.tesr.ChestBlockEntityRenderer;
+import appeng.client.render.tesr.CrankRenderer;
+import appeng.client.render.tesr.DriveLedBlockEntityRenderer;
+import appeng.client.render.tesr.InscriberTESR;
+import appeng.client.render.tesr.SkyChestTESR;
+import appeng.client.render.tesr.SkyStoneTankBlockEntityRenderer;
+import appeng.core.definitions.AEAttachmentTypes;
+import appeng.core.definitions.AEBlockEntities;
 import appeng.core.definitions.AEBlocks;
-import appeng.core.network.NetworkHandler;
+import appeng.core.definitions.AEEntities;
+import appeng.core.network.ServerboundPacket;
 import appeng.core.network.serverbound.MouseWheelPacket;
+import appeng.core.network.serverbound.UpdateHoldingCtrlPacket;
+import appeng.entity.TinyTNTPrimedRenderer;
 import appeng.helpers.IMouseWheelItem;
 import appeng.hooks.BlockAttackHook;
 import appeng.hooks.RenderBlockOutlineHook;
 import appeng.init.client.InitAdditionalModels;
 import appeng.init.client.InitBlockColors;
-import appeng.init.client.InitBlockEntityRenderers;
 import appeng.init.client.InitBuiltInModels;
 import appeng.init.client.InitEntityLayerDefinitions;
-import appeng.init.client.InitEntityRendering;
 import appeng.init.client.InitItemColors;
 import appeng.init.client.InitItemModelsProperties;
-import appeng.init.client.InitParticleFactories;
-import appeng.init.client.InitRenderTypes;
 import appeng.init.client.InitScreens;
 import appeng.init.client.InitStackRenderHandlers;
 import appeng.items.storage.StorageCellTooltipComponent;
@@ -107,7 +130,7 @@ import appeng.util.Platform;
 /**
  * Client-specific functionality.
  */
-@OnlyIn(Dist.CLIENT)
+@Mod(value = AppEng.MOD_ID, dist = Dist.CLIENT)
 public class AppEngClient extends AppEngBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(AppEngClient.class);
 
@@ -126,10 +149,14 @@ public class AppEngClient extends AppEngBase {
             "key.ae2.mouse_wheel_item_modifier", KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM,
             InputConstants.KEY_LSHIFT, "key.ae2.category");
 
+    private static final KeyMapping PART_PLACEMENT_OPPOSITE = new KeyMapping(
+            "key.ae2.part_placement_opposite", KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM,
+            InputConstants.KEY_LCONTROL, "key.ae2.category");
+
     private final Guide guide;
 
-    public AppEngClient(IEventBus modEventBus) {
-        super(modEventBus);
+    public AppEngClient(IEventBus modEventBus, ModContainer container) {
+        super(modEventBus, container);
         InitBuiltInModels.init();
 
         this.registerClientCommands();
@@ -144,16 +171,16 @@ public class AppEngClient extends AppEngBase {
         modEventBus.addListener(this::registerEntityLayerDefinitions);
         modEventBus.addListener(this::registerHotkeys);
         modEventBus.addListener(this::registerDimensionSpecialEffects);
+        modEventBus.addListener(InitScreens::init);
+        modEventBus.addListener(this::enqueueImcMessages);
 
         BlockAttackHook.install();
         RenderBlockOutlineHook.install();
         guide = createGuide(modEventBus);
         OpenGuideHotkey.init();
 
-        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, (TickEvent.ClientTickEvent e) -> {
-            if (e.phase == TickEvent.Phase.START) {
-                updateCableRenderMode();
-            }
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, (ClientTickEvent.Pre e) -> {
+            updateCableRenderMode();
         });
 
         modEventBus.addListener(this::clientSetup);
@@ -165,12 +192,18 @@ public class AppEngClient extends AppEngBase {
             PinnedKeys.clearPinnedKeys();
         });
 
-        NeoForge.EVENT_BUS.addListener((TickEvent.ClientTickEvent e) -> {
-            if (e.phase == TickEvent.Phase.END) {
-                tickPinnedKeys(Minecraft.getInstance());
-                Hotkeys.checkHotkeys();
-            }
+        NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post e) -> {
+            tickPinnedKeys(Minecraft.getInstance());
+            Hotkeys.checkHotkeys();
         });
+
+        container.registerExtensionPoint(IConfigScreenFactory.class,
+                (mc, parent) -> new ConfigurationScreen(container, parent));
+    }
+
+    private void enqueueImcMessages(InterModEnqueueEvent event) {
+        // Our new light-mode UI doesn't play nice with darkmodeeverywhere
+        InterModComms.sendTo("darkmodeeverywhere", "dme-shaderblacklist", () -> "appeng.");
     }
 
     private void registerDimensionSpecialEffects(RegisterDimensionSpecialEffectsEvent event) {
@@ -224,10 +257,9 @@ public class AppEngClient extends AppEngBase {
     }
 
     private void registerHotkeys(RegisterKeyMappingsEvent e) {
-        if (AEConfig.instance().isGuideHotkeyEnabled()) {
-            e.register(OpenGuideHotkey.getHotkey());
-        }
+        e.register(OpenGuideHotkey.getHotkey());
         e.register(MOUSE_WHEEL_ITEM_MODIFIER);
+        e.register(PART_PLACEMENT_OPPOSITE);
         Hotkeys.finalizeRegistration(e::register);
     }
 
@@ -236,7 +268,12 @@ public class AppEngClient extends AppEngBase {
     }
 
     public void registerParticleFactories(RegisterParticleProvidersEvent event) {
-        InitParticleFactories.init();
+        event.registerSpriteSet(ParticleTypes.CRAFTING, CraftingFx.Factory::new);
+        event.registerSpriteSet(ParticleTypes.ENERGY, EnergyFx.Factory::new);
+        event.registerSpriteSet(ParticleTypes.LIGHTNING_ARC, LightningArcFX.Factory::new);
+        event.registerSpriteSet(ParticleTypes.LIGHTNING, LightningFX.Factory::new);
+        event.registerSpriteSet(ParticleTypes.MATTER_CANNON, MatterCannonFX.Factory::new);
+        event.registerSpriteSet(ParticleTypes.VIBRANT, VibrantFX.Factory::new);
     }
 
     public void registerBlockColors(RegisterColorHandlersEvent.Block event) {
@@ -244,7 +281,7 @@ public class AppEngClient extends AppEngBase {
     }
 
     public void registerItemColors(RegisterColorHandlersEvent.Item event) {
-        InitItemColors.init(event.getItemColors());
+        InitItemColors.init(event);
     }
 
     private void registerClientTooltipComponents(RegisterClientTooltipComponentFactoriesEvent event) {
@@ -263,11 +300,23 @@ public class AppEngClient extends AppEngBase {
         });
 
         NeoForge.EVENT_BUS.addListener(this::wheelEvent);
+        NeoForge.EVENT_BUS.addListener(this::ctrlEvent);
         NeoForge.EVENT_BUS.register(OverlayManager.getInstance());
     }
 
     private void registerEntityRenderers(EntityRenderersEvent.RegisterRenderers event) {
-        InitEntityRendering.init(event::registerEntityRenderer);
+        event.registerEntityRenderer(AEEntities.TINY_TNT_PRIMED.get(), TinyTNTPrimedRenderer::new);
+
+        event.registerBlockEntityRenderer(AEBlockEntities.CRANK.get(), CrankRenderer::new);
+        event.registerBlockEntityRenderer(AEBlockEntities.INSCRIBER.get(), InscriberTESR::new);
+        event.registerBlockEntityRenderer(AEBlockEntities.SKY_CHEST.get(), SkyChestTESR::new);
+        event.registerBlockEntityRenderer(AEBlockEntities.CHARGER.get(), ChargerBlockEntityRenderer.FACTORY);
+        event.registerBlockEntityRenderer(AEBlockEntities.DRIVE.get(), DriveLedBlockEntityRenderer::new);
+        event.registerBlockEntityRenderer(AEBlockEntities.ME_CHEST.get(), ChestBlockEntityRenderer::new);
+        event.registerBlockEntityRenderer(AEBlockEntities.CRAFTING_MONITOR.get(), CraftingMonitorRenderer::new);
+        event.registerBlockEntityRenderer(AEBlockEntities.MOLECULAR_ASSEMBLER.get(), MolecularAssemblerRenderer::new);
+        event.registerBlockEntityRenderer(AEBlockEntities.CABLE_BUS.get(), CableBusTESR::new);
+        event.registerBlockEntityRenderer(AEBlockEntities.SKY_STONE_TANK.get(), SkyStoneTankBlockEntityRenderer::new);
     }
 
     private void registerEntityLayerDefinitions(EntityRenderersEvent.RegisterLayerDefinitions event) {
@@ -281,9 +330,7 @@ public class AppEngClient extends AppEngBase {
      */
     private void postClientSetup(Minecraft minecraft) {
         StyleManager.initialize(minecraft.getResourceManager());
-        InitScreens.init();
         InitStackRenderHandlers.init();
-        InitRenderTypes.init();
 
         // Only activate the site exporter when we're not running a release version, since it'll
         // replace blocks around spawn.
@@ -292,14 +339,11 @@ public class AppEngClient extends AppEngBase {
         }
     }
 
-    @OnlyIn(Dist.CLIENT)
     public void modelRegistryEventAdditionalModels(ModelEvent.RegisterAdditional event) {
         InitAdditionalModels.init(event);
     }
 
-    @OnlyIn(Dist.CLIENT)
     public void modelRegistryEvent(RegisterGeometryLoaders event) {
-        InitBlockEntityRenderers.init();
         InitItemModelsProperties.init();
     }
 
@@ -316,8 +360,24 @@ public class AppEngClient extends AppEngBase {
             var offHand = player.getItemInHand(InteractionHand.OFF_HAND).getItem() instanceof IMouseWheelItem;
 
             if (mainHand || offHand) {
-                NetworkHandler.instance().sendToServer(new MouseWheelPacket(me.getScrollDeltaY() > 0));
+                ServerboundPacket message = new MouseWheelPacket(me.getScrollDeltaY() > 0);
+                PacketDistributor.sendToServer(message);
                 me.setCanceled(true);
+            }
+        }
+    }
+
+    private void ctrlEvent(InputEvent.Key event) {
+        if (event.getKey() == PART_PLACEMENT_OPPOSITE.getKey().getValue()) {
+            var player = Minecraft.getInstance().player;
+
+            if (player != null) {
+                var isDown = event.getAction() == InputConstants.PRESS || event.getAction() == InputConstants.REPEAT;
+                var previousIsDown = player.getData(AEAttachmentTypes.HOLDING_CTRL);
+                if (previousIsDown != isDown) {
+                    player.setData(AEAttachmentTypes.HOLDING_CTRL, isDown);
+                    PacketDistributor.sendToServer(new UpdateHoldingCtrlPacket(isDown));
+                }
             }
         }
     }

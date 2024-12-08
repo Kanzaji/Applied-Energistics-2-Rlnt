@@ -14,7 +14,7 @@ import net.minecraft.data.DataProvider;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
-import appeng.api.config.PowerUnits;
+import appeng.api.config.PowerUnit;
 import appeng.client.guidebook.GuidebookText;
 import appeng.core.definitions.AEBlocks;
 import appeng.core.definitions.AEEntities;
@@ -60,12 +60,11 @@ public class LocalizationProvider implements IAE2DataProvider {
         addEnum(GuidebookText.class);
         addEnum(EmiText.class);
         // Can't implement LocalizationEnum since it's not in the API, but PowerUnits is
-        for (var powerUnit : PowerUnits.values()) {
+        for (var powerUnit : PowerUnit.values()) {
             add(powerUnit.unlocalizedName, powerUnit.symbolName);
         }
 
         generateJadeLocalizations();
-
         generateLocalizations();
 
         return save(cache, localizations);
@@ -115,6 +114,8 @@ public class LocalizationProvider implements IAE2DataProvider {
         add("commands.ae2.permissions", "You do not have adequate permissions to run this command.");
         add("commands.ae2.usage",
                 "Commands provided by Applied Energistics 2 - use /ae2 list for a list, and /ae2 help _____ for help with a command.");
+        add("death.attack.matter_cannon", "%1$s was shot by %2$s");
+        add("death.attack.matter_cannon.item", "%1$s was shot by %2$s using %3$s");
         add("entity.minecraft.villager.ae2.fluix_researcher", "Fluix Researcher");
         add("gui.ae2.PatternEncoding.primary_processing_result_hint",
                 "Can be requested through the automated crafting system.");
@@ -128,6 +129,7 @@ public class LocalizationProvider implements IAE2DataProvider {
         add("key.ae2.wireless_terminal", "Open Wireless Terminal");
         add("key.ae2.guide", "Open Guide for Items");
         add("key.ae2.mouse_wheel_item_modifier", "Modifier for Mouse-Wheel Items");
+        add("key.ae2.part_placement_opposite", "Place Parts on Opposite Side");
         add("key.toggle_focus.desc", "Toggle search box focus");
         add("stat.ae2.items_extracted", "Items extracted from ME Storage");
         add("stat.ae2.items_inserted", "Items added to ME Storage");

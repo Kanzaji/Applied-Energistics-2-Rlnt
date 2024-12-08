@@ -7,10 +7,10 @@ import java.util.function.Function;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.crafting.RecipeInput;
 import net.minecraft.world.item.crafting.RecipeType;
 
 import dev.emi.emi.api.EmiApi;
@@ -27,6 +27,7 @@ import dev.emi.emi.api.stack.EmiStack;
 import appeng.api.config.CondenserOutput;
 import appeng.api.features.P2PTunnelAttunementInternal;
 import appeng.api.integrations.emi.EmiStackConverters;
+import appeng.api.upgrades.Upgrades;
 import appeng.core.AEConfig;
 import appeng.core.AppEng;
 import appeng.core.FacadeCreativeTab;
@@ -42,11 +43,8 @@ import appeng.integration.modules.itemlists.ItemPredicates;
 import appeng.menu.me.items.CraftingTermMenu;
 import appeng.menu.me.items.PatternEncodingTermMenu;
 import appeng.menu.me.items.WirelessCraftingTermMenu;
-import appeng.recipes.entropy.EntropyRecipe;
+import appeng.recipes.AERecipeTypes;
 import appeng.recipes.game.StorageCellUpgradeRecipe;
-import appeng.recipes.handlers.ChargerRecipe;
-import appeng.recipes.handlers.InscriberRecipe;
-import appeng.recipes.transform.TransformRecipe;
 
 @EmiEntrypoint
 public class AppEngEmiPlugin implements EmiPlugin {
@@ -81,13 +79,13 @@ public class AppEngEmiPlugin implements EmiPlugin {
         // Inscriber
         registry.addCategory(EmiInscriberRecipe.CATEGORY);
         registry.addWorkstation(EmiInscriberRecipe.CATEGORY, EmiStack.of(AEBlocks.INSCRIBER));
-        adaptRecipeType(registry, InscriberRecipe.TYPE, EmiInscriberRecipe::new);
+        adaptRecipeType(registry, AERecipeTypes.INSCRIBER, EmiInscriberRecipe::new);
 
         // Charger
         registry.addCategory(EmiChargerRecipe.CATEGORY);
         registry.addWorkstation(EmiChargerRecipe.CATEGORY, EmiStack.of(AEBlocks.CHARGER));
         registry.addWorkstation(EmiChargerRecipe.CATEGORY, EmiStack.of(AEBlocks.CRANK));
-        adaptRecipeType(registry, ChargerRecipe.TYPE, EmiChargerRecipe::new);
+        adaptRecipeType(registry, AERecipeTypes.CHARGER, EmiChargerRecipe::new);
 
         // Special upgrade recipes
         adaptSpecialRecipes(registry, StorageCellUpgradeRecipe.class, this::convertStorageCellUpgradeRecipe);
@@ -105,15 +103,22 @@ public class AppEngEmiPlugin implements EmiPlugin {
         // Entropy Manipulator
         registry.addCategory(EmiEntropyRecipe.CATEGORY);
         registry.addWorkstation(EmiEntropyRecipe.CATEGORY, EmiStack.of(AEItems.ENTROPY_MANIPULATOR));
-        adaptRecipeType(registry, EntropyRecipe.TYPE, EmiEntropyRecipe::new);
+        adaptRecipeType(registry, AERecipeTypes.ENTROPY, EmiEntropyRecipe::new);
 
         // In-World Transformation
         registry.addCategory(EmiTransformRecipe.CATEGORY);
-        adaptRecipeType(registry, TransformRecipe.TYPE, EmiTransformRecipe::new);
+        adaptRecipeType(registry, AERecipeTypes.TRANSFORM, EmiTransformRecipe::new);
 
         // Facades
         if (AEConfig.instance().isEnableFacadeRecipesInRecipeViewer()) {
             registry.addDeferredRecipes(this::registerFacades);
+        }
+
+        // Simple item upgrades
+        for (var entry : Upgrades.getUpgradableItems().entrySet()) {
+            for (var upgrade : entry.getValue()) {
+                registry.addRecipe(new EmiAddItemUpgradeRecipe(entry.getKey(), upgrade));
+            }
         }
 
         // Remove items
@@ -160,7 +165,7 @@ public class AppEngEmiPlugin implements EmiPlugin {
             addDescription(registry, AEItems.SILICON_PRESS, GuiText.inWorldCraftingPresses);
         }
 
-        addDescription(registry, AEBlocks.CRANK, ItemModText.CRANK_DESCRIPTION);
+        addDescription(registry, AEBlocks.CRANK.item(), ItemModText.CRANK_DESCRIPTION);
 
     }
 
@@ -174,7 +179,7 @@ public class AppEngEmiPlugin implements EmiPlugin {
 
     }
 
-    private static <C extends Container, T extends Recipe<C>> void adaptRecipeType(EmiRegistry registry,
+    private static <C extends RecipeInput, T extends Recipe<C>> void adaptRecipeType(EmiRegistry registry,
             RecipeType<T> recipeType,
             Function<RecipeHolder<T>, ? extends EmiRecipe> adapter) {
         registry.getRecipeManager().getAllRecipesFor(recipeType)

@@ -19,7 +19,6 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.StructureBlockEntity;
 import net.minecraft.world.level.block.state.properties.StructureMode;
-import net.minecraft.world.level.entity.Visibility;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 
@@ -46,8 +45,10 @@ public class GameTestPlotAdapter {
                     test.maxTicks,
                     test.setupTicks,
                     true,
+                    false,
                     1,
                     1,
+                    test.skyAccess,
                     gameTestHelper -> {
                         test.getTestFunction().accept(new PlotTestHelper(
                                 getPlotTranslation(plot.getBounds()),
@@ -93,20 +94,9 @@ public class GameTestPlotAdapter {
         Vec3i size = new Vec3i(plotBounds.getXSpan(), plotBounds.getYSpan(), plotBounds.getZSpan());
 
         var boundingbox = StructureUtils.getStructureBoundingBox(pos, size, Rotation.NONE);
-        var entityManager = level.entityManager;
-        // TODO: Re-Evaluate in 1.20.5
-        if (net.minecraft.DetectedVersion.tryDetectVersion().getId().equals("1.20.4")) {
-            boundingbox.intersectingChunks().forEach(cp -> {
-                level.setChunkForced(cp.x, cp.z, true);
-                var status = entityManager.chunkVisibility.get(cp.toLong());
-                if (!status.isAccessible()) {
-                    entityManager.updateChunkStatus(cp, Visibility.TRACKED);
-                }
-            });
-        } else {
-            System.err.println("FIX CODE IN GameTestPlotAdapter");
-            throw new RuntimeException("FIX CODE IN GameTestPlotAdapter");
-        }
+        boundingbox.intersectingChunks().forEach(cp -> {
+            level.setChunkForced(cp.x, cp.z, true);
+        });
 
         StructureUtils.clearSpaceForStructure(boundingbox, level);
 
@@ -114,7 +104,7 @@ public class GameTestPlotAdapter {
         var structureBlock = (StructureBlockEntity) level.getBlockEntity(pos);
         structureBlock.setMode(StructureMode.LOAD);
         structureBlock.setIgnoreEntities(false);
-        structureBlock.setStructureName(new ResourceLocation(info.getStructureName()));
+        structureBlock.setStructureName(ResourceLocation.parse(info.getStructureName()));
         structureBlock.setMetaData(info.getTestName());
         structureBlock.setStructureSize(size);
 

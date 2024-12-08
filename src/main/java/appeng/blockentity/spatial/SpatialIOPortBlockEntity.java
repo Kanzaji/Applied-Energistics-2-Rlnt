@@ -20,8 +20,9 @@ package appeng.blockentity.spatial;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -36,14 +37,14 @@ import appeng.api.networking.GridFlags;
 import appeng.api.networking.IGridNodeListener;
 import appeng.api.networking.events.GridSpatialEvent;
 import appeng.api.util.AECableType;
-import appeng.blockentity.grid.AENetworkInvBlockEntity;
+import appeng.blockentity.grid.AENetworkedInvBlockEntity;
 import appeng.hooks.ticking.TickHandler;
 import appeng.util.ILevelRunnable;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.FilteredInternalInventory;
 import appeng.util.inv.filter.IAEItemFilter;
 
-public class SpatialIOPortBlockEntity extends AENetworkInvBlockEntity {
+public class SpatialIOPortBlockEntity extends AENetworkedInvBlockEntity {
 
     private final AppEngInternalInventory inv = new AppEngInternalInventory(this, 2);
     private final InternalInventory invExt = new FilteredInternalInventory(this.inv, new SpatialIOFilter());
@@ -59,27 +60,27 @@ public class SpatialIOPortBlockEntity extends AENetworkInvBlockEntity {
     }
 
     @Override
-    public void saveAdditional(CompoundTag data) {
-        super.saveAdditional(data);
+    public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
+        super.saveAdditional(data, registries);
         data.putInt("lastRedstoneState", this.lastRedstoneState.ordinal());
     }
 
     @Override
-    public void loadTag(CompoundTag data) {
-        super.loadTag(data);
+    public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
+        super.loadTag(data, registries);
         if (data.contains("lastRedstoneState")) {
             this.lastRedstoneState = YesNo.values()[data.getInt("lastRedstoneState")];
         }
     }
 
     @Override
-    protected void writeToStream(FriendlyByteBuf data) {
+    protected void writeToStream(RegistryFriendlyByteBuf data) {
         super.writeToStream(data);
         data.writeBoolean(this.isActive());
     }
 
     @Override
-    protected boolean readFromStream(FriendlyByteBuf data) {
+    protected boolean readFromStream(RegistryFriendlyByteBuf data) {
         boolean ret = super.readFromStream(data);
 
         final boolean isActive = data.readBoolean();

@@ -42,6 +42,7 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import appeng.api.behaviors.ContainerItemStrategies;
 import appeng.api.client.AEKeyRendering;
@@ -85,7 +86,7 @@ import appeng.core.AppEng;
 import appeng.core.localization.ButtonToolTips;
 import appeng.core.localization.GuiText;
 import appeng.core.localization.Tooltips;
-import appeng.core.network.NetworkHandler;
+import appeng.core.network.ServerboundPacket;
 import appeng.core.network.bidirectional.ConfigValuePacket;
 import appeng.core.network.serverbound.MEInteractionPacket;
 import appeng.core.network.serverbound.SwitchGuisPacket;
@@ -137,7 +138,7 @@ public class MEStorageScreen<C extends MEStorageMenu>
         this.searchField = widgets.addTextField("search");
         this.searchField.setPlaceholder(GuiText.SearchPlaceholder.text());
 
-        this.scrollbar = widgets.addScrollBar("scrollbar");
+        this.scrollbar = widgets.addScrollBar("scrollbar", Scrollbar.BIG);
         this.repo = new Repo(scrollbar, this);
         menu.setClientRepo(this.repo);
         this.repo.setUpdateViewListener(this::updateScrollbar);
@@ -161,7 +162,6 @@ public class MEStorageScreen<C extends MEStorageMenu>
         if (this.style.isSupportsAutoCrafting()) {
             this.craftingStatusBtn = new TabButton(Icon.CRAFT_HAMMER,
                     GuiText.CraftingStatus.text(), btn -> showCraftingStatus());
-            this.craftingStatusBtn.setStyle(TabButton.Style.CORNER);
             this.widgets.add("craftingStatus", this.craftingStatusBtn);
         }
 
@@ -227,11 +227,30 @@ public class MEStorageScreen<C extends MEStorageMenu>
             AELog.debug("Clicked on grid inventory entry serial=%s, key=%s", entry.getSerial(), entry.getWhat());
         }
 
-        // Is there an emptying action? If so, send it to the server
-        if (mouseButton == 1 && clickType == ClickType.PICKUP && !menu.getCarried().isEmpty()) {
+        // Left-Clicking on an entry that is supported by a container strategy will either fill the currently
+        // held container, or it will consume a container from the grid to be filled.
+        // Holding shift tries to fill the entire container, while only transferring a single unit otherwise.
+        if (mouseButton == 0 && entry != null && ContainerItemStrategies.isKeySupported(entry.getWhat())) {
+            InventoryAction action;
+            if (clickType != ClickType.QUICK_MOVE) {
+                action = InventoryAction.FILL_ITEM; // Simple click fills item in hand or puts filled item in hand
+            } else {
+                // Shift-click on fluid with an empty hand -> move filled container to player
+                action = menu.getCarried().isEmpty() ? InventoryAction.FILL_ENTIRE_ITEM_MOVE_TO_PLAYER
+                        : InventoryAction.FILL_ENTIRE_ITEM;
+            }
+
+            menu.handleInteraction(entry.getSerial(), action);
+            return;
+        }
+
+        // Right-clicking with an item in hand tries to empty the container into the network
+        // Holding shift tries to empty the entire container, while only transferring a single unit otherwise.
+        if (mouseButton == 1 && !menu.getCarried().isEmpty()) {
             var emptyingAction = ContainerItemStrategies.getEmptyingAction(menu.getCarried());
             if (emptyingAction != null && menu.isKeyVisible(emptyingAction.what())) {
-                menu.handleInteraction(-1, InventoryAction.EMPTY_ITEM);
+                menu.handleInteraction(-1, clickType == ClickType.QUICK_MOVE ? InventoryAction.EMPTY_ENTIRE_ITEM
+                        : InventoryAction.EMPTY_ITEM);
                 return;
             }
         }
@@ -310,7 +329,8 @@ public class MEStorageScreen<C extends MEStorageMenu>
     }
 
     private void showCraftingStatus() {
-        NetworkHandler.instance().sendToServer(SwitchGuisPacket.openSubMenu(CraftingStatusMenu.TYPE));
+        ServerboundPacket message = SwitchGuisPacket.openSubMenu(CraftingStatusMenu.TYPE);
+        PacketDistributor.sendToServer(message);
     }
 
     private int getSlotsPerRow() {
@@ -359,7 +379,7 @@ public class MEStorageScreen<C extends MEStorageMenu>
             setTextContent(TEXT_ID_DIALOG_TITLE, this.title);
         } else if (this.menu.getTarget() instanceof IMEChest) {
             // ME Chest uses Item Terminals, but overrides the title
-            setTextContent(TEXT_ID_DIALOG_TITLE, GuiText.Chest.text());
+            setTextContent(TEXT_ID_DIALOG_TITLE, GuiText.MEChest.text());
         }
     }
 
@@ -385,11 +405,11 @@ public class MEStorageScreen<C extends MEStorageMenu>
 
             // This can change due to changes in the search settings sub-screen
             this.searchField.setTooltipMessage(List.of(
-                    config.isSearchTooltips() ? GuiText.SearchTooltipIncludingTooltips.text()
-                            : GuiText.SearchTooltip.text(),
+                    GuiText.SearchTooltip.text(),
                     GuiText.SearchTooltipModId.text(),
-                    GuiText.SearchTooltipItemId.text(),
-                    GuiText.SearchTooltipTag.text()));
+                    GuiText.SearchTooltipTag.text(),
+                    GuiText.SearchTooltipToolTips.text(),
+                    GuiText.SearchTooltipItemId.text()));
 
             // Sync the search text both ways but make the direction depend on which search has the focus
             if (config.isSyncWithExternalSearch()) {
@@ -431,8 +451,8 @@ public class MEStorageScreen<C extends MEStorageMenu>
         if (this.craftingStatusBtn != null && menu.activeCraftingJobs != -1) {
             // The stack size renderer expects a 16x16 slot, while the button is normally
             // bigger
-            int x = this.craftingStatusBtn.getX() + (this.craftingStatusBtn.getWidth() - 16) / 2;
-            int y = this.craftingStatusBtn.getY() + (this.craftingStatusBtn.getHeight() - 16) / 2;
+            int x = this.craftingStatusBtn.getX() + (this.craftingStatusBtn.getWidth() - 18) / 2;
+            int y = this.craftingStatusBtn.getY() + (this.craftingStatusBtn.getHeight() - 18) / 2;
 
             StackSizeRenderer.renderSizeLabel(guiGraphics, font, x - this.leftPos, y - this.topPos,
                     String.valueOf(menu.activeCraftingJobs));
@@ -514,7 +534,7 @@ public class MEStorageScreen<C extends MEStorageMenu>
                 int times = (int) Math.abs(deltaY);
                 for (int h = 0; h < times; h++) {
                     final MEInteractionPacket p = new MEInteractionPacket(this.menu.containerId, serial, direction);
-                    NetworkHandler.instance().sendToServer(p);
+                    PacketDistributor.sendToServer(p);
                 }
 
                 return true;
@@ -612,9 +632,7 @@ public class MEStorageScreen<C extends MEStorageMenu>
                     boolean craftable = entry.isCraftable();
                     var useLargeFonts = config.isUseLargeFonts();
                     if (craftable && (isViewOnlyCraftable() || storedAmount <= 0)) {
-                        var craftLabelText = useLargeFonts ? GuiText.LargeFontCraft.getLocal()
-                                : GuiText.SmallFontCraft.getLocal();
-                        StackSizeRenderer.renderSizeLabel(guiGraphics, this.font, s.x, s.y, craftLabelText);
+                        StackSizeRenderer.renderSizeLabel(guiGraphics, this.font, s.x, s.y, "+");
                     } else {
                         AmountFormat format = useLargeFonts ? AmountFormat.SLOT_LARGE_FONT
                                 : AmountFormat.SLOT;
@@ -794,6 +812,10 @@ public class MEStorageScreen<C extends MEStorageMenu>
         this.repo.updateView();
     }
 
+    protected int getVisibleRows() {
+        return rows;
+    }
+
     private void toggleTerminalStyle(SettingToggleButton<appeng.api.config.TerminalStyle> btn, boolean backwards) {
         appeng.api.config.TerminalStyle next = btn.getNextValue(backwards);
         config.setTerminalStyle(next);
@@ -803,7 +825,8 @@ public class MEStorageScreen<C extends MEStorageMenu>
 
     private <SE extends Enum<SE>> void toggleServerSetting(SettingToggleButton<SE> btn, boolean backwards) {
         SE next = btn.getNextValue(backwards);
-        NetworkHandler.instance().sendToServer(new ConfigValuePacket(btn.getSetting(), next));
+        ServerboundPacket message = new ConfigValuePacket(btn.getSetting(), next);
+        PacketDistributor.sendToServer(message);
         btn.set(next);
     }
 

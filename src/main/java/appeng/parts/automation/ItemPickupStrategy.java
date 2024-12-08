@@ -19,9 +19,9 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -40,7 +40,7 @@ import appeng.util.Platform;
 
 public class ItemPickupStrategy implements PickupStrategy {
 
-    public static final ResourceLocation TAG_BLACKLIST = new ResourceLocation(AppEng.MOD_ID,
+    public static final ResourceLocation TAG_BLACKLIST = AppEng.makeId(
             "blacklisted/annihilation_plane");
 
     private static final TagKey<Block> BLOCK_BLACKLIST = TagKey.create(Registries.BLOCK, TAG_BLACKLIST);
@@ -50,14 +50,14 @@ public class ItemPickupStrategy implements PickupStrategy {
     private final ServerLevel level;
     private final BlockPos pos;
     private final Direction side;
-    private final Map<Enchantment, Integer> enchantments;
+    private final ItemEnchantments enchantments;
     @Nullable
     private final UUID ownerUuid;
 
     private boolean isAccepting = true;
 
     public ItemPickupStrategy(ServerLevel level, BlockPos pos, Direction side, BlockEntity host,
-            Map<Enchantment, Integer> enchantments, @Nullable UUID owningPlayerId) {
+            ItemEnchantments enchantments, @Nullable UUID owningPlayerId) {
         this.level = level;
         this.pos = pos;
         this.side = side;
@@ -130,6 +130,8 @@ public class ItemPickupStrategy implements PickupStrategy {
             var inserted = storeItemStack(sink, item);
             // If inserting the item fully was not possible, drop it as an item entity instead if the storage clears up,
             // we'll pick it up that way
+            // This will mainly be the case with storages like a compacting drawer (where two inserts can simulate
+            // correctly but only one will succeed)
             if (inserted < item.getCount()) {
                 item.shrink(inserted);
                 Platform.spawnDrops(level, pos, Collections.singletonList(item));
@@ -253,20 +255,23 @@ public class ItemPickupStrategy implements PickupStrategy {
         }
 
         if (enchantments != null) {
+            var enchantmentRegistry = level.registryAccess().registryOrThrow(Registries.ENCHANTMENT);
+
             var efficiencyFactor = 1f;
-            var efficiencyLevel = 0;
-            if (enchantments.containsKey(Enchantments.BLOCK_EFFICIENCY)) {
+            var efficiencyLevel = enchantments.getLevel(enchantmentRegistry.getHolderOrThrow(Enchantments.EFFICIENCY));
+            if (efficiencyLevel > 0) {
                 // Reduce total energy usage incurred by other enchantments by 15% per Efficiency level.
-                efficiencyLevel = enchantments.get(Enchantments.BLOCK_EFFICIENCY);
                 efficiencyFactor *= Math.pow(0.85, efficiencyLevel);
             }
-            if (enchantments.containsKey(Enchantments.UNBREAKING)) {
+            var unbreakingLevel = enchantments.getLevel(enchantmentRegistry.getHolderOrThrow(Enchantments.UNBREAKING));
+            if (unbreakingLevel > 0) {
                 // Give plane only a (100 / (level + 1))% chance to use energy.
                 // This is similar to vanilla Unbreaking behaviour for tools.
-                int randomNumber = level.getRandom().nextInt(enchantments.get(Enchantments.UNBREAKING) + 1);
+                int randomNumber = level.getRandom().nextInt(unbreakingLevel + 1);
                 useEnergy = randomNumber == 0;
             }
-            var levelSum = enchantments.values().stream().reduce(0, Integer::sum) - efficiencyLevel;
+            var levelSum = enchantments.entrySet().stream().map(Map.Entry::getValue).reduce(0, Integer::sum)
+                    - efficiencyLevel;
             requiredEnergy *= 8 * levelSum * efficiencyFactor;
         }
 
@@ -274,12 +279,12 @@ public class ItemPickupStrategy implements PickupStrategy {
     }
 
     /**
-     * Checks if the network can store the possible drops.
+     * Checks if the network can store the drops.
      * <p>
      * It also sets isAccepting to false, if the item can not be stored.
      *
      * @param itemStacks an array of {@link ItemStack} to test
-     * @return true, if the network can store at least a single item of all drops or no drops are reported
+     * @return true, if the network can store all drops or no drops are reported
      */
     private boolean canStoreItemStacks(PickupSink sink, List<ItemStack> itemStacks) {
         var canStore = itemStacks.isEmpty();
@@ -287,7 +292,7 @@ public class ItemPickupStrategy implements PickupStrategy {
         for (var itemStack : itemStacks) {
             var itemToTest = AEItemKey.of(itemStack);
             var inserted = sink.insert(itemToTest, itemStack.getCount(), Actionable.SIMULATE);
-            if (inserted > 0) {
+            if (inserted == itemStack.getCount()) {
                 canStore = true;
             }
         }
@@ -339,9 +344,9 @@ public class ItemPickupStrategy implements PickupStrategy {
             fallback = true;
         }
 
-        if (enchantments != null) {
+        if (!enchantments.isEmpty()) {
             // For silk touch / fortune purposes, enchant the fake tool
-            EnchantmentHelper.setEnchantments(enchantments, tool);
+            EnchantmentHelper.setEnchantments(tool, enchantments);
 
             // Setting fallback to false ensures it'll be used even if not strictly required
             fallback = false;

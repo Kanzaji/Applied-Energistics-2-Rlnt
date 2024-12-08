@@ -18,31 +18,30 @@
 
 package appeng.crafting.pattern;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 
 import com.google.common.base.Preconditions;
 
 import org.jetbrains.annotations.Nullable;
 
-import net.minecraft.core.NonNullList;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.Container;
-import net.minecraft.world.SimpleContainer;
-import net.minecraft.world.inventory.CraftingContainer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SmithingRecipe;
+import net.minecraft.world.item.crafting.SmithingRecipeInput;
 import net.minecraft.world.item.crafting.SmithingTransformRecipe;
 import net.minecraft.world.item.crafting.SmithingTrimRecipe;
 import net.minecraft.world.level.Level;
 
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.PatternDetailsTooltip;
+import appeng.api.ids.AEComponents;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.stacks.GenericStack;
@@ -54,14 +53,6 @@ import appeng.core.localization.GuiText;
  * Encodes patterns for the {@link net.minecraft.world.level.block.SmithingTableBlock}.
  */
 public class AESmithingTablePattern implements IPatternDetails, IMolecularAssemblerSupportedPattern {
-    private static final String NBT_TEMPLATE = "template";
-    private static final String NBT_BASE = "base";
-    private static final String NBT_ADDITION = "addition";
-    // Only used to attempt to recover the recipe in case it's ID has changed
-    private static final String NBT_OUTPUT = "out";
-    private static final String NBT_SUBSITUTE = "substitute";
-    private static final String NBT_RECIPE_ID = "recipe";
-
     // The slot indices in the 3x3 crafting grid that we insert our item into (in the MAC)
     private static final int TEMPLATE_CRAFTING_GRID_SLOT = 3;
     private static final int BASE_CRAFTING_GRID_SLOT = 4;
@@ -71,32 +62,41 @@ public class AESmithingTablePattern implements IPatternDetails, IMolecularAssemb
     public final boolean canSubstitute;
     private final ResourceLocation recipeId;
     private final SmithingRecipe recipe;
-    private final Container testFrame;
     private final ItemStack output;
     private final AEItemKey template;
     private final AEItemKey base;
     private final AEItemKey addition;
     private final IInput[] inputs;
-    private final GenericStack[] outputs;
+    private final List<GenericStack> outputs;
 
     public AESmithingTablePattern(AEItemKey definition, Level level) {
         this.definition = definition;
-        var tag = Objects.requireNonNull(definition.getTag());
 
-        this.template = PatternNbtUtils.getRequiredItemKey(tag, NBT_TEMPLATE);
-        this.base = PatternNbtUtils.getRequiredItemKey(tag, NBT_BASE);
-        this.addition = PatternNbtUtils.getRequiredItemKey(tag, NBT_ADDITION);
-        this.canSubstitute = PatternNbtUtils.getBoolean(tag, NBT_SUBSITUTE, false);
+        var encodedPattern = definition.get(AEComponents.ENCODED_SMITHING_TABLE_PATTERN);
+        if (encodedPattern == null) {
+            throw new IllegalArgumentException("Given item does not encode a smithing table pattern: " + definition);
+        } else if (encodedPattern.containsMissingContent()) {
+            throw new IllegalArgumentException("Pattern references missing content");
+        }
+
+        this.template = Objects.requireNonNull(AEItemKey.of(encodedPattern.template()), "template");
+        this.base = Objects.requireNonNull(AEItemKey.of(encodedPattern.base()), "base");
+        this.addition = Objects.requireNonNull(AEItemKey.of(encodedPattern.addition()), "addition");
+        this.canSubstitute = encodedPattern.canSubstitute();
 
         // Find recipe
-        this.recipeId = PatternNbtUtils.getRequiredResourceLocation(tag, NBT_RECIPE_ID);
-        this.recipe = level.getRecipeManager().byType(RecipeType.SMITHING).get(recipeId).value();
+        this.recipeId = encodedPattern.recipeId();
+        this.recipe = level.getRecipeManager().byKey(recipeId).map(holder -> (SmithingRecipe) holder.value())
+                .orElse(null);
+        if (recipe == null) {
+            throw new IllegalStateException("Smithing pattern references unknown recipe " + recipeId);
+        }
 
         // Build frame and find output
-        this.testFrame = new SimpleContainer(3);
-        this.testFrame.setItem(0, template.toStack());
-        this.testFrame.setItem(1, base.toStack());
-        this.testFrame.setItem(2, addition.toStack());
+        var testFrame = new SmithingRecipeInput(
+                template.toStack(),
+                base.toStack(),
+                addition.toStack());
 
         if (!this.recipe.matches(testFrame, level)) {
             throw new IllegalStateException("The recipe " + recipeId + " no longer matches the encoded input.");
@@ -127,9 +127,7 @@ public class AESmithingTablePattern implements IPatternDetails, IMolecularAssemb
                 new Input(base, baseIngredient, BASE_CRAFTING_GRID_SLOT),
                 new Input(addition, additionIngredient, ADDITION_CRAFTING_GRID_SLOT)
         };
-        this.outputs = new GenericStack[] {
-                GenericStack.fromItemStack(this.output)
-        };
+        this.outputs = Collections.singletonList(GenericStack.fromItemStack(this.output));
     }
 
     public ResourceLocation getRecipeId() {
@@ -170,7 +168,7 @@ public class AESmithingTablePattern implements IPatternDetails, IMolecularAssemb
     }
 
     @Override
-    public GenericStack[] getOutputs() {
+    public List<GenericStack> getOutputs() {
         return outputs;
     }
 
@@ -179,15 +177,16 @@ public class AESmithingTablePattern implements IPatternDetails, IMolecularAssemb
     }
 
     @Override
-    public ItemStack assemble(Container container, Level level) {
-        // Jiggle the container around
-        var testContainer = new SimpleContainer(3);
-        testContainer.setItem(0, container.getItem(TEMPLATE_CRAFTING_GRID_SLOT));
-        testContainer.setItem(1, container.getItem(BASE_CRAFTING_GRID_SLOT));
-        testContainer.setItem(2, container.getItem(ADDITION_CRAFTING_GRID_SLOT));
+    public ItemStack assemble(CraftingInput container, Level level) {
+        // Note that the crafting input is always "compressed" and removes any margins,
+        // so the slots we used to insert into the Molecular Assembler will change.
+        var testFrame = new SmithingRecipeInput(
+                container.getItem(0),
+                container.getItem(1),
+                container.getItem(2));
 
-        if (recipe.matches(testContainer, level)) {
-            return recipe.assemble(testContainer, level.registryAccess());
+        if (recipe.matches(testFrame, level)) {
+            return recipe.assemble(testFrame, level.registryAccess());
         }
         return ItemStack.EMPTY;
     }
@@ -210,27 +209,27 @@ public class AESmithingTablePattern implements IPatternDetails, IMolecularAssemb
         }
 
         // Fill frame and check result
-        int containerSlot;
-        if (gridSlot == TEMPLATE_CRAFTING_GRID_SLOT) {
-            containerSlot = 0;
-        } else if (gridSlot == BASE_CRAFTING_GRID_SLOT) {
-            containerSlot = 1;
-        } else if (gridSlot == ADDITION_CRAFTING_GRID_SLOT) {
-            containerSlot = 2;
-        } else {
+        var testInput = switch (gridSlot) {
+            case TEMPLATE_CRAFTING_GRID_SLOT -> new SmithingRecipeInput(
+                    key.toStack(),
+                    base.toStack(),
+                    addition.toStack());
+            case BASE_CRAFTING_GRID_SLOT -> new SmithingRecipeInput(
+                    template.toStack(),
+                    key.toStack(),
+                    addition.toStack());
+            case ADDITION_CRAFTING_GRID_SLOT -> new SmithingRecipeInput(
+                    template.toStack(),
+                    base.toStack(),
+                    key.toStack());
+            default -> null;
+        };
+        if (testInput == null) {
             return false;
         }
 
-        var previousStack = testFrame.removeItemNoUpdate(containerSlot);
-        testFrame.setItem(containerSlot, key.toStack());
-
-        var newResult = recipe.matches(testFrame, level)
-                && ItemStack.matches(output, recipe.assemble(testFrame, level.registryAccess()));
-
-        // Restore old stack in the frame
-        testFrame.setItem(containerSlot, previousStack);
-
-        return newResult;
+        return recipe.matches(testInput, level)
+                && ItemStack.matches(output, recipe.assemble(testInput, level.registryAccess()));
     }
 
     @Override
@@ -260,13 +259,7 @@ public class AESmithingTablePattern implements IPatternDetails, IMolecularAssemb
         }
     }
 
-    @Override
-    public NonNullList<ItemStack> getRemainingItems(CraftingContainer container) {
-        // Smithing table does not support remainders
-        return NonNullList.withSize(container.getContainerSize(), ItemStack.EMPTY);
-    }
-
-    public static void encode(CompoundTag tag, RecipeHolder<SmithingRecipe> recipe, AEItemKey template, AEItemKey base,
+    public static void encode(ItemStack stack, RecipeHolder<SmithingRecipe> recipe, AEItemKey template, AEItemKey base,
             AEItemKey addition,
             AEItemKey output, boolean allowSubstitutes) {
         Preconditions.checkNotNull(recipe, "recipe");
@@ -275,12 +268,13 @@ public class AESmithingTablePattern implements IPatternDetails, IMolecularAssemb
         Preconditions.checkNotNull(addition, "addition");
         Preconditions.checkNotNull(output, "output");
 
-        tag.put(NBT_TEMPLATE, template.toTag());
-        tag.put(NBT_BASE, base.toTag());
-        tag.put(NBT_ADDITION, addition.toTag());
-        tag.put(NBT_OUTPUT, output.toTag());
-        tag.putBoolean(NBT_SUBSITUTE, allowSubstitutes);
-        tag.putString(NBT_RECIPE_ID, recipe.id().toString());
+        stack.set(AEComponents.ENCODED_SMITHING_TABLE_PATTERN, new EncodedSmithingTablePattern(
+                template.toStack(),
+                base.toStack(),
+                addition.toStack(),
+                output.toStack(),
+                allowSubstitutes,
+                recipe.id()));
     }
 
     @Override
@@ -293,21 +287,23 @@ public class AESmithingTablePattern implements IPatternDetails, IMolecularAssemb
         return tooltip;
     }
 
-    public static PatternDetailsTooltip getInvalidTooltip(CompoundTag tag, Level level, @Nullable Exception cause,
+    public static PatternDetailsTooltip getInvalidTooltip(ItemStack stack, Level level, @Nullable Exception cause,
             TooltipFlag flags) {
         var tooltip = new PatternDetailsTooltip(PatternDetailsTooltip.OUTPUT_TEXT_CRAFTS);
 
-        PatternNbtUtils.readKeyFaultTolerant(tag, NBT_TEMPLATE).ifPresent(tooltip::addInput);
-        PatternNbtUtils.readKeyFaultTolerant(tag, NBT_BASE).ifPresent(tooltip::addInput);
-        PatternNbtUtils.readKeyFaultTolerant(tag, NBT_ADDITION).ifPresent(tooltip::addInput);
-        PatternNbtUtils.readKeyFaultTolerant(tag, NBT_OUTPUT).ifPresent(tooltip::addOutput);
-        if (PatternNbtUtils.getBoolean(tag, NBT_SUBSITUTE, false)) {
-            tooltip.addProperty(GuiText.PatternTooltipSubstitutions.text());
-        }
-        if (flags.isAdvanced()) {
-            PatternNbtUtils.tryGetString(tag, NBT_RECIPE_ID).ifPresent(recipeId -> {
-                tooltip.addProperty(Component.literal("Recipe"), Component.literal(recipeId));
-            });
+        var encodedPattern = stack.get(AEComponents.ENCODED_SMITHING_TABLE_PATTERN);
+        if (encodedPattern != null) {
+            tooltip.addInput(GenericStack.fromItemStack(encodedPattern.template()));
+            tooltip.addInput(GenericStack.fromItemStack(encodedPattern.base()));
+            tooltip.addInput(GenericStack.fromItemStack(encodedPattern.addition()));
+            tooltip.addOutput(GenericStack.fromItemStack(encodedPattern.resultItem()));
+            if (encodedPattern.canSubstitute()) {
+                tooltip.addProperty(GuiText.PatternTooltipSubstitutions.text());
+            }
+            if (flags.isAdvanced()) {
+                tooltip.addProperty(Component.literal("Recipe"),
+                        Component.literal(encodedPattern.recipeId().toString()));
+            }
         }
         return tooltip;
     }

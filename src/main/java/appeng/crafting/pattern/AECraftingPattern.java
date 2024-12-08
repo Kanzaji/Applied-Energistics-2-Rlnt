@@ -18,38 +18,38 @@
 
 package appeng.crafting.pattern;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 import com.google.common.base.Preconditions;
 
 import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.core.NonNullList;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.Container;
-import net.minecraft.world.inventory.CraftingContainer;
-import net.minecraft.world.inventory.TransientCraftingContainer;
 import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.MilkBucketItem;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.ShapedRecipe;
 import net.minecraft.world.level.Level;
 
 import appeng.api.behaviors.ContainerItemStrategies;
 import appeng.api.crafting.IPatternDetails;
 import appeng.api.crafting.PatternDetailsTooltip;
+import appeng.api.ids.AEComponents;
 import appeng.api.stacks.AEFluidKey;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
@@ -58,29 +58,22 @@ import appeng.api.stacks.GenericStack;
 import appeng.api.stacks.KeyCounter;
 import appeng.blockentity.crafting.IMolecularAssemblerSupportedPattern;
 import appeng.core.localization.GuiText;
-import appeng.menu.AutoCraftingMenu;
 
 public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSupportedPattern {
-    private static final String NBT_INPUTS = "in";
-    private static final String NBT_OUTPUTS = "out";
-    private static final String NBT_SUBSTITUTE = "substitute";
-    private static final String NBT_SUBSTITUTE_FLUIDS = "substituteFluids";
-    private static final String NBT_RECIPE_ID = "recipe";
     public static final int CRAFTING_GRID_DIMENSION = 3;
     public static final int CRAFTING_GRID_SLOTS = CRAFTING_GRID_DIMENSION * CRAFTING_GRID_DIMENSION;
 
     private final AEItemKey definition;
     public final boolean canSubstitute;
     public final boolean canSubstituteFluids;
-    private final RecipeHolder<CraftingRecipe> recipeHolder;
+    private final RecipeHolder<?> recipeHolder;
     private final CraftingRecipe recipe;
-    private final CraftingContainer testFrame;
-    private final CraftingContainer specialRecipeTestFrame;
-    private final GenericStack[] sparseInputs;
+    private final List<GenericStack> sparseInputs;
     private final int[] sparseToCompressed = new int[9];
     private final Input[] inputs;
     private final ItemStack output;
-    private final GenericStack[] outputsArray;
+    private final List<GenericStack> outputsArray;
+    private final CraftingInput.Positioned positionedPattern;
     /**
      * We cache results of isValid(...) calls for stacks that don't have NBT.
      */
@@ -89,50 +82,48 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
 
     public AECraftingPattern(AEItemKey definition, Level level) {
         this.definition = definition;
-        var tag = Objects.requireNonNull(definition.getTag(), "pattern requires a tag");
+        var encodedPattern = definition.get(AEComponents.ENCODED_CRAFTING_PATTERN);
+        if (encodedPattern == null) {
+            throw new IllegalArgumentException("Given item does not encode a crafting pattern: " + definition);
+        } else if (encodedPattern.containsMissingContent()) {
+            throw new IllegalArgumentException("Pattern references missing content");
+        }
 
-        this.canSubstitute = PatternNbtUtils.getBoolean(tag, NBT_SUBSTITUTE, false);
-        this.canSubstituteFluids = PatternNbtUtils.getBoolean(tag, NBT_SUBSTITUTE_FLUIDS, false);
-        this.sparseInputs = getCraftingInputs(tag);
+        this.canSubstitute = encodedPattern.canSubstitute();
+        this.canSubstituteFluids = encodedPattern.canSubstituteFluids();
+        this.sparseInputs = getCraftingInputs(encodedPattern.inputs());
 
         // Find recipe
-        var recipeId = PatternNbtUtils.getRequiredResourceLocation(tag, NBT_RECIPE_ID);
-        this.recipeHolder = level.getRecipeManager().byType(RecipeType.CRAFTING).get(recipeId);
-        if (recipeHolder == null) {
-            throw new IllegalArgumentException("Pattern references unknown recipe " + recipeId);
+        this.recipeHolder = level.getRecipeManager().byKey(encodedPattern.recipeId()).orElse(null);
+        if (recipeHolder == null || !(recipeHolder.value() instanceof CraftingRecipe)) {
+            throw new IllegalArgumentException("Pattern references unknown recipe " + encodedPattern.recipeId());
         }
-        this.recipe = recipeHolder.value();
+        this.recipe = (CraftingRecipe) recipeHolder.value();
 
         // Build frame and find output
-        this.testFrame = new TransientCraftingContainer(new AutoCraftingMenu(), 3, 3);
-        this.specialRecipeTestFrame = new TransientCraftingContainer(new AutoCraftingMenu(), 3, 3);
-        for (int i = 0; i < 9; ++i) {
-            if (sparseInputs[i] != null) {
-                var itemKey = (AEItemKey) sparseInputs[i].what();
-                testFrame.setItem(i, itemKey.toStack());
-            }
-        }
-        if (!this.recipe.matches(testFrame, level)) {
+        this.positionedPattern = makeCraftingInput();
+        if (!this.recipe.matches(positionedPattern.input(), level)) {
             throw new IllegalStateException("The recipe " + recipe + " no longer matches the encoded input.");
         }
 
-        this.output = this.recipe.assemble(testFrame, level.registryAccess());
+        this.output = this.recipe.assemble(positionedPattern.input(), level.registryAccess());
         if (this.output.isEmpty()) {
-            throw new IllegalStateException("The recipe " + recipeId + " produced an empty item stack result.");
+            throw new IllegalStateException(
+                    "The recipe " + encodedPattern.recipeId() + " produced an empty item stack result.");
         }
-        this.outputsArray = new GenericStack[] { Objects.requireNonNull(GenericStack.fromItemStack(this.output)) };
+        this.outputsArray = Collections.singletonList(Objects.requireNonNull(GenericStack.fromItemStack(this.output)));
 
         // Compress inputs
         var condensedInputs = AEPatternHelper.condenseStacks(sparseInputs);
-        this.inputs = new Input[condensedInputs.length];
+        this.inputs = new Input[condensedInputs.size()];
         for (int i = 0; i < 9; ++i) {
             sparseToCompressed[i] = -1;
         }
-        for (int j = 0; j < condensedInputs.length; ++j) {
-            var condensedInput = condensedInputs[j];
+        for (int j = 0; j < condensedInputs.size(); ++j) {
+            var condensedInput = condensedInputs.get(j);
 
             for (int i = 0; i < 9; ++i) {
-                if (sparseInputs[i] != null && sparseInputs[i].what().equals(condensedInput.what())) {
+                if (sparseInputs.get(i) != null && sparseInputs.get(i).what().equals(condensedInput.what())) {
                     if (inputs[j] == null) {
                         inputs[j] = new Input(i, condensedInput);
                     }
@@ -163,7 +154,7 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
     }
 
     @Override
-    public GenericStack[] getOutputs() {
+    public List<GenericStack> getOutputs() {
         return outputsArray;
     }
 
@@ -188,16 +179,16 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
         // Compute the offset of the user's input vs. crafting grid origin
         // Which is >0 if they have empty rows above or to the left of their input
         int topOffset = 0;
-        if (sparseInputs[0] == null && sparseInputs[1] == null && sparseInputs[2] == null) {
+        if (sparseInputs.get(0) == null && sparseInputs.get(1) == null && sparseInputs.get(2) == null) {
             topOffset++; // First row is fully empty
-            if (sparseInputs[3] == null && sparseInputs[4] == null && sparseInputs[5] == null) {
+            if (sparseInputs.get(3) == null && sparseInputs.get(4) == null && sparseInputs.get(5) == null) {
                 topOffset++; // Second row is fully empty
             }
         }
         int leftOffset = 0;
-        if (sparseInputs[0] == null && sparseInputs[3] == null && sparseInputs[6] == null) {
+        if (sparseInputs.get(0) == null && sparseInputs.get(3) == null && sparseInputs.get(6) == null) {
             leftOffset++; // First column is fully empty
-            if (sparseInputs[1] == null && sparseInputs[4] == null && sparseInputs[7] == null) {
+            if (sparseInputs.get(1) == null && sparseInputs.get(4) == null && sparseInputs.get(7) == null) {
                 leftOffset++; // Second column is fully empty
             }
         }
@@ -224,7 +215,7 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
         // since both lists have the same length, the mapping is at least stable.
         int ingredientIndex = 0;
         for (int i = 0; i < slot; i++) {
-            if (sparseInputs[i] != null) {
+            if (sparseInputs.get(i) != null) {
                 ingredientIndex++;
             }
         }
@@ -258,12 +249,12 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
     @Override
     public boolean isItemValid(int slot, AEItemKey key, Level level) {
         if (!canSubstitute) {
-            return sparseInputs[slot] == null && key == null
-                    || sparseInputs[slot] != null && sparseInputs[slot].what().equals(key);
+            return sparseInputs.get(slot) == null && key == null
+                    || sparseInputs.get(slot) != null && sparseInputs.get(slot).what().equals(key);
         }
 
         if (key == null) {
-            return sparseInputs[slot] == null;
+            return sparseInputs.get(slot) == null;
         }
 
         var result = getTestResult(slot, key);
@@ -272,23 +263,19 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
         }
 
         // Fill frame and check result
-        var previousStack = testFrame.removeItemNoUpdate(slot);
-        testFrame.setItem(slot, key.toStack());
+        var testCraftingInput = makeCraftingInputWithReplacedSlot(slot, key);
 
-        var newResult = recipe.matches(testFrame, level)
-                && ItemStack.matches(output, recipe.assemble(testFrame, level.registryAccess()));
+        var newResult = recipe.matches(testCraftingInput.input(), level)
+                && ItemStack.matches(output, recipe.assemble(testCraftingInput.input(), level.registryAccess()));
 
         setTestResult(slot, key, newResult);
-
-        // Restore old stack in the frame
-        testFrame.setItem(slot, previousStack);
 
         return newResult;
     }
 
     @Override
     public boolean isSlotEnabled(int slot) {
-        return sparseInputs[slot] != null;
+        return sparseInputs.get(slot) != null;
     }
 
     private ItemStack getRecipeRemainder(int slot, AEItemKey key) {
@@ -296,14 +283,18 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
         // Consider making this more efficient in the future? (e.g. cache the produced remainders)
 
         // Fill frame
-        var previousStack = testFrame.removeItemNoUpdate(slot);
-        testFrame.setItem(slot, key.toStack());
+        var positioned = makeCraftingInputWithReplacedSlot(slot, key);
         // Get remainder
-        var remainder = recipe.getRemainingItems(testFrame).get(slot);
-        // Restore old stack in the frame
-        testFrame.setItem(slot, previousStack);
+        var remainingItems = recipe.getRemainingItems(positioned.input());
 
-        return remainder;
+        var x = (slot % CRAFTING_GRID_DIMENSION - positioned.left());
+        var y = slot / CRAFTING_GRID_DIMENSION - positioned.top();
+        var remainderIdx = y * positioned.input().width() + x;
+        if (remainderIdx >= 0 && remainderIdx < remainingItems.size()) {
+            return remainingItems.get(remainderIdx);
+        }
+
+        return ItemStack.EMPTY;
     }
 
     /**
@@ -313,7 +304,7 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
      */
     @Nullable
     private Boolean getTestResult(int slot, AEItemKey what) {
-        if (what == null || what.hasTag()) {
+        if (what == null || what.hasComponents()) {
             return null;
         }
         var cache = isValidCache[slot];
@@ -325,7 +316,7 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
     }
 
     private void setTestResult(int slot, AEItemKey what, boolean result) {
-        if (what != null && !what.hasTag()) {
+        if (what != null && !what.hasComponents()) {
             var cache = isValidCache[slot];
             if (cache == null) {
                 cache = isValidCache[slot] = new IdentityHashMap<>();
@@ -334,11 +325,11 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
         }
     }
 
-    public GenericStack[] getSparseInputs() {
+    public List<GenericStack> getSparseInputs() {
         return sparseInputs;
     }
 
-    public GenericStack[] getSparseOutputs() {
+    public List<GenericStack> getSparseOutputs() {
         return outputsArray;
     }
 
@@ -388,13 +379,18 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
     }
 
     @Override
-    public ItemStack assemble(Container container, Level level) {
+    public ItemStack assemble(CraftingInput container, Level level) {
+        if (positionedPattern.input().width() != container.width()
+                || positionedPattern.input().height() != container.height()) {
+            return ItemStack.EMPTY;
+        }
+
         if (canSubstitute && recipe.isSpecial()) {
             // For special recipes, we need to test the recipe with assemble, unfortunately, since the output might
             // depend on the inputs in a way that can't be detected by changing one input at the time.
-            specialRecipeTestFrame.clearContent();
+            var items = NonNullList.withSize(CRAFTING_GRID_DIMENSION * CRAFTING_GRID_DIMENSION, ItemStack.EMPTY);
 
-            for (int x = 0; x < container.getContainerSize(); ++x) {
+            for (int x = 0; x < container.size(); ++x) {
                 ItemStack item = container.getItem(x);
                 var stack = GenericStack.unwrapItemStack(item);
                 if (stack != null) {
@@ -402,56 +398,73 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
                     // If it matches the allowable input
                     var validFluid = getValidFluid(x);
                     if (validFluid != null && validFluid.equals(stack)) {
-                        specialRecipeTestFrame.setItem(x, ((AEItemKey) sparseInputs[x].what()).toStack());
+                        items.set(x, ((AEItemKey) sparseInputs.get(x).what()).toStack());
                         continue;
                     }
                 }
-                specialRecipeTestFrame.setItem(x, item.copy());
+                items.set(x, item.copy());
             }
 
-            return recipe.assemble(specialRecipeTestFrame, level.registryAccess());
+            var testInput = CraftingInput.of(CRAFTING_GRID_DIMENSION, CRAFTING_GRID_DIMENSION, items);
+            return recipe.assemble(testInput, level.registryAccess());
         }
 
-        for (int x = 0; x < container.getContainerSize(); x++) {
-            ItemStack item = container.getItem(x);
-            var stack = GenericStack.unwrapItemStack(item);
-            if (stack != null) {
-                // If we receive a pure fluid stack, we'll convert it to the appropriate container item
-                // If it matches the allowable input
-                var validFluid = getValidFluid(x);
-                if (validFluid != null && validFluid.equals(stack)) {
-                    continue;
+        for (int i = 0; i < sparseInputs.size(); i++) {
+            var x = (i % CRAFTING_GRID_DIMENSION) - positionedPattern.left();
+            var y = i / CRAFTING_GRID_DIMENSION - positionedPattern.top();
+            if (x >= 0 && x < container.width() && y >= 0 && y < container.height()) {
+                ItemStack item = container.getItem(x, y);
+                var stack = GenericStack.unwrapItemStack(item);
+                if (stack != null) {
+                    // If we receive a pure fluid stack, we'll convert it to the appropriate container item
+                    // If it matches the allowable input
+                    var validFluid = getValidFluid(i);
+                    if (validFluid != null && validFluid.equals(stack)) {
+                        continue;
+                    }
                 }
-            }
 
-            if (!isItemValid(x, AEItemKey.of(item), level)) {
-                return ItemStack.EMPTY;
+                if (!isItemValid(i, AEItemKey.of(item), level)) {
+                    return ItemStack.EMPTY;
+                }
             }
         }
         return output;
     }
 
     @Override
-    public NonNullList<ItemStack> getRemainingItems(CraftingContainer container) {
+    public NonNullList<ItemStack> getRemainingItems(CraftingInput container) {
         // Replace substituted fluids with the original item and ensure the slot is deleted
         // after calling getRemainingItems. This is to fix compatibility with mods that *actually*
         // search for the fluid containers in the container and warn/error if they're not found.
         // See AE2 bug 6804 for details.
+
         if (canSubstituteFluids) {
-            var slotsToClear = new boolean[container.getContainerSize()];
-            for (int x = 0; x < container.getContainerSize(); ++x) {
+            var adjustedItems = new ArrayList<ItemStack>(container.size());
+            for (int i = 0; i < container.size(); i++) {
+                adjustedItems.add(container.getItem(i));
+            }
+
+            var slotsToClear = new boolean[container.size()];
+            for (int x = 0; x < container.size(); ++x) {
                 var validFluid = getValidFluid(x);
                 if (validFluid != null) {
                     var item = container.getItem(x);
                     var stack = GenericStack.unwrapItemStack(item);
                     if (validFluid.equals(stack)) {
-                        container.setItem(x, ((AEItemKey) sparseInputs[x].what()).toStack());
+                        adjustedItems.set(x, ((AEItemKey) sparseInputs.get(x).what()).toStack());
                         slotsToClear[x] = true;
                     }
                 }
             }
 
-            var result = this.recipe.getRemainingItems(container);
+            // Since we did not remove items, the positioning itself should not change.
+            var adjustedInput = CraftingInput.of(container.width(), container.height(), adjustedItems);
+            if (adjustedInput.size() != container.size()) {
+                throw new IllegalStateException("After fluid substitution, the container size changed: "
+                        + adjustedInput.size() + " != " + container.size());
+            }
+            var result = this.recipe.getRemainingItems(adjustedInput);
 
             // Now ensure the empty buckets are cleared since we didn't really use any buckets to begin with
             for (int i = 0; i < slotsToClear.length; i++) {
@@ -480,35 +493,40 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
             // We only support buckets since we can't predict the behavior of other kinds of containers (ender tanks...)
 
             // Check that the remaining item is indeed the emptied container.
-            var testFrameCopy = new TransientCraftingContainer(new AutoCraftingMenu(), 3, 3);
-            for (int i = 0; i < 9; ++i) {
-                testFrameCopy.setItem(i, testFrame.getItem(i).copy());
-            }
             // Note: the following call might do a performed extraction with mods that have native fluid container
             // support (such as immersive engineering "fluid aware" recipes). This is only safe because we restrict this
             // code path to buckets.
-            var remainingItems = recipe.getRemainingItems(testFrameCopy);
-            var slotRemainder = remainingItems.get(slot);
-            if (slotRemainder.getCount() == 1 && slotRemainder.is(Items.BUCKET)) {
-                return new GenericStack(containedFluid.what(), containedFluid.amount());
+            var positioned = makeCraftingInput();
+
+            var remainingItems = recipe.getRemainingItems(positioned.input());
+            var x = (slot % 3 - positioned.left());
+            var y = slot / 3 - positioned.top();
+            var remainderIdx = y * positioned.input().width() + x;
+            if (remainderIdx >= 0 && remainderIdx < remainingItems.size()) {
+                var slotRemainder = remainingItems.get(remainderIdx);
+                if (slotRemainder.getCount() == 1 && slotRemainder.is(Items.BUCKET)) {
+                    return new GenericStack(containedFluid.what(), containedFluid.amount());
+                }
             }
         }
 
         return item;
     }
 
-    public static void encode(CompoundTag tag, RecipeHolder<CraftingRecipe> recipe, ItemStack[] sparseInputs,
+    public static void encode(ItemStack result, RecipeHolder<CraftingRecipe> recipe, ItemStack[] sparseInputs,
             ItemStack output, boolean allowSubstitutes, boolean allowFluidSubstitutes) {
-        Objects.requireNonNull(tag, "tag");
         Objects.requireNonNull(recipe, "recipe");
         Objects.requireNonNull(sparseInputs, "sparseInputs");
         Objects.requireNonNull(output, "output");
 
-        tag.put(NBT_INPUTS, PatternNbtUtils.encodeItemStackList(sparseInputs));
-        tag.putBoolean(NBT_SUBSTITUTE, allowSubstitutes);
-        tag.putBoolean(NBT_SUBSTITUTE_FLUIDS, allowFluidSubstitutes);
-        tag.put(NBT_OUTPUTS, output.save(new CompoundTag()));
-        tag.putString(NBT_RECIPE_ID, recipe.id().toString());
+        result.set(
+                AEComponents.ENCODED_CRAFTING_PATTERN,
+                new EncodedCraftingPattern(
+                        Stream.of(sparseInputs).map(ItemStack::copy).toList(),
+                        output.copy(),
+                        recipe.id(),
+                        allowSubstitutes,
+                        allowFluidSubstitutes));
     }
 
     @Override
@@ -531,25 +549,31 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
         return tooltip;
     }
 
-    public static PatternDetailsTooltip getInvalidPatternTooltip(CompoundTag tag, Level level,
+    public static PatternDetailsTooltip getInvalidPatternTooltip(ItemStack stack, Level level,
             @Nullable Exception cause, TooltipFlag flags) {
         var tooltip = new PatternDetailsTooltip(PatternDetailsTooltip.OUTPUT_TEXT_CRAFTS);
 
-        PatternNbtUtils.readItemStackListFaultTolerant(tag, NBT_INPUTS, tooltip::addInput);
-        PatternNbtUtils.readItemStackFaultTolerant(tag, NBT_OUTPUTS).ifPresent(tooltip::addOutput);
+        var encodedPattern = stack.get(AEComponents.ENCODED_CRAFTING_PATTERN);
+        if (encodedPattern != null) {
+            for (var input : encodedPattern.inputs()) {
+                if (!input.isEmpty()) {
+                    tooltip.addInput(AEItemKey.of(input), input.getCount());
+                }
+            }
+            tooltip.addOutput(AEItemKey.of(encodedPattern.result()), encodedPattern.result().getCount());
 
-        if (PatternNbtUtils.getBoolean(tag, NBT_SUBSTITUTE, false)) {
-            tooltip.addProperty(GuiText.PatternTooltipSubstitutions.text());
-        }
+            if (encodedPattern.canSubstitute()) {
+                tooltip.addProperty(GuiText.PatternTooltipSubstitutions.text());
+            }
 
-        if (PatternNbtUtils.getBoolean(tag, NBT_SUBSTITUTE_FLUIDS, false)) {
-            tooltip.addProperty(GuiText.PatternTooltipFluidSubstitutions.text());
-        }
+            if (encodedPattern.canSubstituteFluids()) {
+                tooltip.addProperty(GuiText.PatternTooltipFluidSubstitutions.text());
+            }
 
-        if (flags.isAdvanced()) {
-            PatternNbtUtils.tryGetString(tag, NBT_RECIPE_ID).ifPresent(recipeId -> {
-                tooltip.addProperty(Component.literal("Recipe"), Component.literal(recipeId));
-            });
+            if (flags.isAdvanced()) {
+                tooltip.addProperty(Component.literal("Recipe"),
+                        Component.literal(encodedPattern.recipeId().toString()));
+            }
         }
 
         return tooltip;
@@ -564,7 +588,7 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
             this.slot = slot;
             this.multiplier = condensedInput.amount();
 
-            var itemOrFluidInput = getItemOrFluidInput(slot, sparseInputs[slot]);
+            var itemOrFluidInput = getItemOrFluidInput(slot, sparseInputs.get(slot));
 
             if (!canSubstitute) {
                 this.possibleInputs = new GenericStack[] { itemOrFluidInput };
@@ -610,21 +634,38 @@ public class AECraftingPattern implements IPatternDetails, IMolecularAssemblerSu
         }
     }
 
-    public static GenericStack[] getCraftingInputs(CompoundTag nbt) {
-        Objects.requireNonNull(nbt, "Pattern must have a tag.");
+    public static List<GenericStack> getCraftingInputs(List<ItemStack> stacks) {
+        Preconditions.checkArgument(stacks.size() <= 9, "Cannot use more than 9 ingredients");
 
-        ListTag tag = nbt.getList(NBT_INPUTS, Tag.TAG_COMPOUND);
-        Preconditions.checkArgument(tag.size() <= 9, "Cannot use more than 9 ingredients");
-
-        var result = new GenericStack[tag.size()];
-        for (int x = 0; x < tag.size(); ++x) {
-            var ingredientTag = tag.getCompound(x);
-            if (!ingredientTag.isEmpty()) {
-                result[x] = GenericStack.fromItemStack(ItemStack.of(ingredientTag));
+        var result = new GenericStack[stacks.size()];
+        for (int x = 0; x < stacks.size(); ++x) {
+            if (!stacks.get(x).isEmpty()) {
+                result[x] = GenericStack.fromItemStack(stacks.get(x));
             }
         }
-        return result;
-
+        return Arrays.asList(result);
     }
 
+    private CraftingInput.Positioned makeCraftingInput() {
+        return CraftingInput.ofPositioned(CRAFTING_GRID_DIMENSION, CRAFTING_GRID_DIMENSION, makeCraftingInputItems());
+    }
+
+    private CraftingInput.Positioned makeCraftingInputWithReplacedSlot(int slot, AEItemKey replacement) {
+        var items = makeCraftingInputItems();
+        items.set(slot, replacement.toStack());
+        return CraftingInput.ofPositioned(CRAFTING_GRID_DIMENSION, CRAFTING_GRID_DIMENSION, items);
+    }
+
+    private List<ItemStack> makeCraftingInputItems() {
+        var testFrameItems = new ArrayList<ItemStack>(sparseInputs.size());
+        for (int i = 0; i < sparseInputs.size(); ++i) {
+            if (sparseInputs.get(i) != null) {
+                var itemKey = (AEItemKey) sparseInputs.get(i).what();
+                testFrameItems.add(i, itemKey.toStack());
+            } else {
+                testFrameItems.add(ItemStack.EMPTY);
+            }
+        }
+        return testFrameItems;
+    }
 }

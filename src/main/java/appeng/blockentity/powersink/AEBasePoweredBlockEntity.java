@@ -27,6 +27,7 @@ import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
@@ -35,7 +36,7 @@ import net.neoforged.neoforge.energy.IEnergyStorage;
 import appeng.api.config.AccessRestriction;
 import appeng.api.config.Actionable;
 import appeng.api.config.PowerMultiplier;
-import appeng.api.config.PowerUnits;
+import appeng.api.config.PowerUnit;
 import appeng.api.networking.energy.IAEPowerStorage;
 import appeng.api.networking.events.GridPowerStorageStateChanged.PowerEventType;
 import appeng.blockentity.AEBaseInvBlockEntity;
@@ -67,21 +68,21 @@ public abstract class AEBasePoweredBlockEntity extends AEBaseInvBlockEntity
     }
 
     @Override
-    public void saveAdditional(CompoundTag data) {
-        super.saveAdditional(data);
+    public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
+        super.saveAdditional(data, registries);
         data.putDouble("internalCurrentPower", this.getInternalCurrentPower());
     }
 
     @Override
-    public void loadTag(CompoundTag data) {
-        super.loadTag(data);
+    public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
+        super.loadTag(data, registries);
         this.setInternalCurrentPower(data.getDouble("internalCurrentPower"));
     }
 
     @Override
-    public final double getExternalPowerDemand(PowerUnits externalUnit, double maxPowerRequired) {
-        return PowerUnits.AE.convertTo(externalUnit,
-                Math.max(0.0, this.getFunnelPowerDemand(externalUnit.convertTo(PowerUnits.AE, maxPowerRequired))));
+    public final double getExternalPowerDemand(PowerUnit externalUnit, double maxPowerRequired) {
+        return PowerUnit.AE.convertTo(externalUnit,
+                Math.max(0.0, this.getFunnelPowerDemand(externalUnit.convertTo(PowerUnit.AE, maxPowerRequired))));
     }
 
     protected double getFunnelPowerDemand(double maxRequired) {
@@ -89,8 +90,8 @@ public abstract class AEBasePoweredBlockEntity extends AEBaseInvBlockEntity
     }
 
     @Override
-    public final double injectExternalPower(PowerUnits input, double amt, Actionable mode) {
-        return PowerUnits.AE.convertTo(input, this.funnelPowerIntoStorage(input.convertTo(PowerUnits.AE, amt), mode));
+    public final double injectExternalPower(PowerUnit input, double amt, Actionable mode) {
+        return PowerUnit.AE.convertTo(input, this.funnelPowerIntoStorage(input.convertTo(PowerUnit.AE, amt), mode));
     }
 
     protected double funnelPowerIntoStorage(double power, Actionable mode) {

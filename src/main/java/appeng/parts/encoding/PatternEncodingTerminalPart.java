@@ -20,6 +20,7 @@ package appeng.parts.encoding;
 
 import java.util.List;
 
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
@@ -40,10 +41,10 @@ public class PatternEncodingTerminalPart extends AbstractTerminalPart
         implements IPatternTerminalLogicHost, IPatternTerminalMenuHost {
 
     @PartModels
-    public static final ResourceLocation MODEL_OFF = new ResourceLocation(AppEng.MOD_ID,
+    public static final ResourceLocation MODEL_OFF = AppEng.makeId(
             "part/pattern_encoding_terminal_off");
     @PartModels
-    public static final ResourceLocation MODEL_ON = new ResourceLocation(AppEng.MOD_ID,
+    public static final ResourceLocation MODEL_ON = AppEng.makeId(
             "part/pattern_encoding_terminal_on");
 
     public static final IPartModel MODELS_OFF = new PartModel(MODEL_BASE, MODEL_OFF, MODEL_STATUS_OFF);
@@ -75,16 +76,16 @@ public class PatternEncodingTerminalPart extends AbstractTerminalPart
     }
 
     @Override
-    public void readFromNBT(CompoundTag data) {
-        super.readFromNBT(data);
+    public void readFromNBT(CompoundTag data, HolderLookup.Provider registries) {
+        super.readFromNBT(data, registries);
 
-        logic.readFromNBT(data);
+        logic.readFromNBT(data, registries);
     }
 
     @Override
-    public void writeToNBT(CompoundTag data) {
-        super.writeToNBT(data);
-        logic.writeToNBT(data);
+    public void writeToNBT(CompoundTag data, HolderLookup.Provider registries) {
+        super.writeToNBT(data, registries);
+        logic.writeToNBT(data, registries);
     }
 
     @Override

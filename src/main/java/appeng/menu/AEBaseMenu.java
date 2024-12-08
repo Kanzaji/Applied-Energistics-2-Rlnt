@@ -35,7 +35,8 @@ import com.google.gson.GsonBuilder;
 import org.jetbrains.annotations.MustBeInvokedByOverriders;
 import org.jetbrains.annotations.Nullable;
 
-import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Inventory;
@@ -45,6 +46,7 @@ import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import it.unimi.dsi.fastutil.shorts.ShortOpenHashSet;
 import it.unimi.dsi.fastutil.shorts.ShortSet;
@@ -61,7 +63,7 @@ import appeng.api.stacks.GenericStack;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.core.AELog;
 import appeng.core.network.ClientboundPacket;
-import appeng.core.network.NetworkHandler;
+import appeng.core.network.ServerboundPacket;
 import appeng.core.network.clientbound.GuiDataSyncPacket;
 import appeng.core.network.serverbound.GuiActionPacket;
 import appeng.helpers.InventoryAction;
@@ -79,6 +81,7 @@ import appeng.util.ConfigMenuInventory;
 
 public abstract class AEBaseMenu extends AbstractContainerMenu {
     private static final int MAX_STRING_LENGTH = 32767;
+    private static final int MAX_CONTAINER_TRANSFER_ITERATIONS = 256;
     private static final String HIDE_SLOT = "HideSlot";
 
     private final IActionSource mySrc;
@@ -99,7 +102,7 @@ public abstract class AEBaseMenu extends AbstractContainerMenu {
     // Slots that are only present on the client-side
     private final Set<Slot> clientSideSlot = new HashSet<>();
     /**
-     * Indicates that the menu was created after returning from a {@link ISubMenu}. Previous screen state stored on the
+     * Indicates that the menu was created after returning from a {@link ISubMenu}. Previous screen state amount on the
      * client should be restored.
      */
     private boolean returnedFromSubScreen;
@@ -152,6 +155,10 @@ public abstract class AEBaseMenu extends AbstractContainerMenu {
 
     public Player getPlayer() {
         return getPlayerInventory().player;
+    }
+
+    protected final RegistryAccess registryAccess() {
+        return getPlayer().level().registryAccess();
     }
 
     public IActionSource getActionSource() {
@@ -308,7 +315,7 @@ public abstract class AEBaseMenu extends AbstractContainerMenu {
             }
 
             if (dataSync.hasChanges()) {
-                sendPacketToClient(new GuiDataSyncPacket(containerId, dataSync::writeUpdate));
+                sendPacketToClient(new GuiDataSyncPacket(containerId, dataSync::writeUpdate, registryAccess()));
             }
         }
 
@@ -415,7 +422,7 @@ public abstract class AEBaseMenu extends AbstractContainerMenu {
             for (Slot cs : this.slots) {
                 if (cs instanceof FakeSlot && !isPlayerSideSlot(cs)) {
                     var destination = cs.getItem();
-                    if (ItemStack.isSameItemSameTags(destination, stackToMove)) {
+                    if (ItemStack.isSameItemSameComponents(destination, stackToMove)) {
                         break; // Item is already in the filter
                     } else if (destination.isEmpty()) {
                         cs.set(stackToMove.copy());
@@ -531,12 +538,13 @@ public abstract class AEBaseMenu extends AbstractContainerMenu {
         }
         var s = this.getSlot(slot);
 
-        if (s instanceof CraftingTermSlot) {
+        if (s instanceof CraftingTermSlot craftingTermSlot) {
             switch (action) {
                 case CRAFT_SHIFT:
+                case CRAFT_ALL:
                 case CRAFT_ITEM:
                 case CRAFT_STACK:
-                    ((CraftingTermSlot) s).doClick(action, player);
+                    craftingTermSlot.doClick(action, player);
                 default:
             }
         }
@@ -553,13 +561,14 @@ public abstract class AEBaseMenu extends AbstractContainerMenu {
             var realInv = configInv.getDelegate();
             var realInvSlot = appEngSlot.slot;
 
-            if (action == InventoryAction.FILL_ITEM) {
+            if (action == InventoryAction.FILL_ITEM || action == InventoryAction.FILL_ENTIRE_ITEM) {
                 var what = realInv.getKey(realInvSlot);
                 handleFillingHeldItem(
                         (amount, mode) -> realInv.extract(realInvSlot, what, amount, mode),
-                        what);
-            } else if (action == InventoryAction.EMPTY_ITEM) {
-                handleEmptyHeldItem((what, amount, mode) -> realInv.insert(realInvSlot, what, amount, mode));
+                        what, action == InventoryAction.FILL_ENTIRE_ITEM);
+            } else if (action == InventoryAction.EMPTY_ITEM || action == InventoryAction.EMPTY_ENTIRE_ITEM) {
+                handleEmptyHeldItem((what, amount, mode) -> realInv.insert(realInvSlot, what, amount, mode),
+                        action == InventoryAction.EMPTY_ENTIRE_ITEM);
             }
         }
 
@@ -582,46 +591,57 @@ public abstract class AEBaseMenu extends AbstractContainerMenu {
         long extract(long amount, Actionable mode);
     }
 
-    protected final void handleFillingHeldItem(FillingSource source, AEKey what) {
+    protected final void handleFillingHeldItem(FillingSource source, AEKey what, boolean fillAll) {
         var ctx = ContainerItemStrategies.findCarriedContextForKey(what, getPlayer(), this);
         if (ctx == null) {
             return;
         }
 
-        // Check if we can pull out of the system
-        var canPull = source.extract(Long.MAX_VALUE, Actionable.SIMULATE);
-        if (canPull <= 0) {
-            return;
+        long amount = fillAll ? Long.MAX_VALUE : what.getAmountPerUnit();
+        boolean filled = false;
+        int maxIterations = fillAll ? MAX_CONTAINER_TRANSFER_ITERATIONS : 1;
+
+        while (maxIterations > 0) {
+            // Check if we can pull out of the system
+            var canPull = source.extract(amount, Actionable.SIMULATE);
+            if (canPull <= 0) {
+                break;
+            }
+
+            // Check how much we can store in the item
+            long amountAllowed = ctx.insert(what, canPull, Actionable.SIMULATE);
+            if (amountAllowed == 0) {
+                break; // Nothing.
+            }
+
+            // Now actually pull out of the system
+            var extracted = source.extract(amountAllowed, Actionable.MODULATE);
+            if (extracted <= 0) {
+                // Something went wrong
+                AELog.error("Unable to pull fluid out of the ME system even though the simulation said yes ");
+                break;
+            }
+
+            // Actually store possible amount in the held item
+            long inserted = ctx.insert(what, extracted, Actionable.MODULATE);
+            if (inserted == 0) {
+                break;
+            }
+
+            filled = true;
+            maxIterations--;
         }
 
-        // Check how much we can store in the item
-        long amountAllowed = ctx.insert(what, canPull, Actionable.SIMULATE);
-        if (amountAllowed == 0) {
-            return; // Nothing.
+        if (filled) {
+            ctx.playFillSound(getPlayer(), what);
         }
-
-        // Now actually pull out of the system
-        var extracted = source.extract(amountAllowed, Actionable.MODULATE);
-        if (extracted <= 0) {
-            // Something went wrong
-            AELog.error("Unable to pull fluid out of the ME system even though the simulation said yes ");
-            return;
-        }
-
-        // How much could fit into the carried container
-        long inserted = ctx.insert(what, extracted, Actionable.MODULATE);
-        if (inserted == 0) {
-            return;
-        }
-
-        ctx.playFillSound(getPlayer(), what);
     }
 
     protected interface EmptyingSink {
         long insert(AEKey what, long amount, Actionable mode);
     }
 
-    protected final void handleEmptyHeldItem(EmptyingSink sink) {
+    protected final void handleEmptyHeldItem(EmptyingSink sink, boolean emptyAll) {
         var ctx = ContainerItemStrategies.findCarriedContext(null, getPlayer(), this);
         if (ctx == null) {
             return;
@@ -629,34 +649,50 @@ public abstract class AEBaseMenu extends AbstractContainerMenu {
 
         // See how much we can drain from the item
         var content = ctx.getExtractableContent();
-        if (content == null) {
+        if (content == null || content.amount() == 0) {
             return;
         }
 
         var what = content.what();
-        var amount = content.amount();
+        long amount = emptyAll ? Long.MAX_VALUE : what.getAmountPerUnit();
+        int maxIterations = emptyAll ? MAX_CONTAINER_TRANSFER_ITERATIONS : 1;
+        boolean emptied = false;
 
-        // Check if we can push into the system
-        var canInsert = sink.insert(what, amount, Actionable.SIMULATE);
-        if (canInsert <= 0) {
-            return;
+        while (maxIterations > 0) {
+            // Check if we can pull out of the container
+            var canExtract = ctx.extract(what, amount, Actionable.SIMULATE);
+            if (canExtract <= 0) {
+                break;
+            }
+
+            // Check if we can push into the system
+            var amountAllowed = sink.insert(what, canExtract, Actionable.SIMULATE);
+            if (amountAllowed <= 0) {
+                break;
+            }
+
+            // Actually drain
+            var extracted = ctx.extract(what, amountAllowed, Actionable.MODULATE);
+            if (extracted != amountAllowed) {
+                AELog.error(
+                        "Fluid item [%s] reported a different possible amount to drain than it actually provided.",
+                        getCarried());
+                break;
+            }
+
+            // Actually push into the system
+            if (sink.insert(what, extracted, Actionable.MODULATE) != extracted) {
+                AELog.error("Failed to insert previously simulated %s into ME system", what);
+                break;
+            }
+
+            emptied = true;
+            maxIterations--;
         }
 
-        // Actually drain
-        var extracted = ctx.extract(what, canInsert, Actionable.MODULATE);
-        if (extracted != canInsert) {
-            AELog.error(
-                    "Fluid item [%s] reported a different possible amount to drain than it actually provided.",
-                    getCarried());
-            return;
+        if (emptied) {
+            ctx.playEmptySound(getPlayer(), what);
         }
-
-        if (sink.insert(what, extracted, Actionable.MODULATE) != extracted) {
-            AELog.error("Failed to insert previously simulated %s into ME system", what);
-            return;
-        }
-
-        ctx.playEmptySound(getPlayer(), what);
     }
 
     private void handleFakeSlotAction(FakeSlot fakeSlot, InventoryAction action) {
@@ -820,7 +856,7 @@ public abstract class AEBaseMenu extends AbstractContainerMenu {
 
     protected final void sendPacketToClient(ClientboundPacket packet) {
         if (getPlayer() instanceof ServerPlayer serverPlayer) {
-            NetworkHandler.instance().sendTo(packet, serverPlayer);
+            serverPlayer.connection.send(packet);
         }
     }
 
@@ -829,14 +865,14 @@ public abstract class AEBaseMenu extends AbstractContainerMenu {
         super.sendAllDataToRemote();
 
         if (dataSync.hasFields()) {
-            sendPacketToClient(new GuiDataSyncPacket(containerId, dataSync::writeFull));
+            sendPacketToClient(new GuiDataSyncPacket(containerId, dataSync::writeFull, registryAccess()));
         }
     }
 
     /**
      * Receives data from the server for synchronizing fields of this class.
      */
-    public final void receiveServerSyncData(FriendlyByteBuf data) {
+    public final void receiveServerSyncData(RegistryFriendlyByteBuf data) {
         ShortSet updatedFields = new ShortOpenHashSet();
         this.dataSync.readUpdate(data, updatedFields);
         this.onServerDataSync(updatedFields);
@@ -913,7 +949,8 @@ public abstract class AEBaseMenu extends AbstractContainerMenu {
                             + MAX_STRING_LENGTH + " (" + jsonPayload.length() + ")");
         }
 
-        NetworkHandler.instance().sendToServer(new GuiActionPacket(containerId, clientAction.name, jsonPayload));
+        ServerboundPacket message = new GuiActionPacket(containerId, clientAction.name, jsonPayload);
+        PacketDistributor.sendToServer(message);
     }
 
     /**

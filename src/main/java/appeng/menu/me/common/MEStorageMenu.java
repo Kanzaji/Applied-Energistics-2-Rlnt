@@ -38,11 +38,11 @@ import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.Ingredient;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.shorts.ShortSet;
 
-import appeng.api.behaviors.ContainerItemStrategies;
 import appeng.api.config.Actionable;
 import appeng.api.config.Setting;
 import appeng.api.config.Settings;
@@ -70,7 +70,7 @@ import appeng.api.util.KeyTypeSelection;
 import appeng.api.util.KeyTypeSelectionHost;
 import appeng.client.gui.me.common.MEStorageScreen;
 import appeng.core.AELog;
-import appeng.core.network.NetworkHandler;
+import appeng.core.network.ServerboundPacket;
 import appeng.core.network.bidirectional.ConfigValuePacket;
 import appeng.core.network.clientbound.MEInventoryUpdatePacket;
 import appeng.core.network.clientbound.SetLinkStatusPacket;
@@ -87,15 +87,13 @@ import appeng.menu.interfaces.KeyTypeSelectionMenu;
 import appeng.menu.me.crafting.CraftAmountMenu;
 import appeng.menu.slot.AppEngSlot;
 import appeng.menu.slot.RestrictedInputSlot;
-import appeng.util.ConfigManager;
-import appeng.util.IConfigManagerListener;
 import appeng.util.Platform;
 
 /**
  * @see MEStorageScreen
  */
 public class MEStorageMenu extends AEBaseMenu
-        implements IConfigManagerListener, IConfigurableObject, IMEInteractionHandler, LinkStatusAwareMenu,
+        implements IConfigurableObject, IMEInteractionHandler, LinkStatusAwareMenu,
         KeyTypeSelectionMenu {
 
     public static final MenuType<MEStorageMenu> TYPE = MenuTypeBuilder
@@ -170,11 +168,12 @@ public class MEStorageMenu extends AEBaseMenu
             this.energySource = IEnergySource.empty();
         }
         this.storage = Objects.requireNonNull(host.getInventory(), "host inventory is null");
-        this.clientCM = new ConfigManager(this);
 
-        this.clientCM.registerSetting(Settings.SORT_BY, SortOrder.NAME);
-        this.clientCM.registerSetting(Settings.VIEW_MODE, ViewItems.ALL);
-        this.clientCM.registerSetting(Settings.SORT_DIRECTION, SortDir.ASCENDING);
+        this.clientCM = IConfigManager.builder(this::onSettingChanged)
+                .registerSetting(Settings.SORT_BY, SortOrder.NAME)
+                .registerSetting(Settings.VIEW_MODE, ViewItems.ALL)
+                .registerSetting(Settings.SORT_DIRECTION, SortDir.ASCENDING)
+                .build();
 
         if (isServerSide()) {
             this.serverCM = host.getConfigManager();
@@ -212,7 +211,7 @@ public class MEStorageMenu extends AEBaseMenu
     }
 
     @Nullable
-    public IGridNode getNetworkNode() {
+    public IGridNode getGridNode() {
         if (host instanceof IActionHost actionHost) {
             return actionHost.getActionableNode();
         }
@@ -271,7 +270,7 @@ public class MEStorageMenu extends AEBaseMenu
 
                 if (updateHelper.hasChanges()) {
                     var builder = MEInventoryUpdatePacket
-                            .builder(containerId, updateHelper.isFullUpdate());
+                            .builder(containerId, updateHelper.isFullUpdate(), getPlayer().registryAccess());
                     builder.setFilter(this::isKeyVisible);
                     builder.addChanges(updateHelper, availableStacks, craftables, requestables);
                     builder.buildAndSend(this::sendPacketToClient);
@@ -307,7 +306,7 @@ public class MEStorageMenu extends AEBaseMenu
     }
 
     private Set<AEKey> getCraftablesFromGrid() {
-        IGridNode hostNode = getNetworkNode();
+        IGridNode hostNode = getGridNode();
         // Wireless terminals do not directly expose the target grid (even though they have one)
         if (hostNode == null && host instanceof IActionHost actionHost) {
             hostNode = actionHost.getActionableNode();
@@ -323,7 +322,7 @@ public class MEStorageMenu extends AEBaseMenu
     }
 
     private void updateActiveCraftingJobs() {
-        IGridNode hostNode = getNetworkNode();
+        IGridNode hostNode = getGridNode();
         IGrid grid = null;
         if (hostNode != null) {
             grid = hostNode.getGrid();
@@ -344,8 +343,7 @@ public class MEStorageMenu extends AEBaseMenu
         this.activeCraftingJobs = activeJobs;
     }
 
-    @Override
-    public void onSettingChanged(IConfigManager manager, Setting<?> setting) {
+    private void onSettingChanged(IConfigManager manager, Setting<?> setting) {
         if (this.getGui() != null) {
             this.getGui().run();
         }
@@ -375,7 +373,8 @@ public class MEStorageMenu extends AEBaseMenu
     @Override
     public final void handleInteraction(long serial, InventoryAction action) {
         if (isClientSide()) {
-            NetworkHandler.instance().sendToServer(new MEInteractionPacket(containerId, serial, action));
+            ServerboundPacket message = new MEInteractionPacket(containerId, serial, action);
+            PacketDistributor.sendToServer(message);
             return;
         }
 
@@ -409,29 +408,31 @@ public class MEStorageMenu extends AEBaseMenu
             return;
         }
 
-        if (action == InventoryAction.PICKUP_OR_SET_DOWN && ContainerItemStrategies.isKeySupported(clickedKey)) {
-            action = InventoryAction.FILL_ITEM;
-        }
-
-        if (action == InventoryAction.SPLIT_OR_PLACE_SINGLE) {
-            if (ContainerItemStrategies.getContainedStack(getCarried()) != null) {
-                action = InventoryAction.EMPTY_ITEM;
-            }
-        }
-
-        if (action == InventoryAction.FILL_ITEM) {
-            tryFillContainerItem(clickedKey, false);
-        } else if (action == InventoryAction.SHIFT_CLICK) {
-            tryFillContainerItem(clickedKey, true);
-        } else if (action == InventoryAction.EMPTY_ITEM) {
-            handleEmptyHeldItem((what, amount, mode) -> StorageHelper.poweredInsert(energySource, storage, what, amount,
-                    getActionSource(), mode));
-        } else if (action == InventoryAction.AUTO_CRAFT) {
+        // Handle auto-crafting requests
+        if (action == InventoryAction.AUTO_CRAFT) {
             var locator = getLocator();
             if (locator != null && clickedKey != null) {
                 CraftAmountMenu.open(player, locator, clickedKey, clickedKey.getAmountPerUnit());
             }
             return;
+        }
+
+        // Attempt fluid related actions first
+        switch (action) {
+            case FILL_ITEM -> tryFillContainerItem(clickedKey, false, false);
+            case FILL_ITEM_MOVE_TO_PLAYER -> tryFillContainerItem(clickedKey, true, false);
+            case FILL_ENTIRE_ITEM -> tryFillContainerItem(clickedKey, false, true);
+            case FILL_ENTIRE_ITEM_MOVE_TO_PLAYER -> tryFillContainerItem(clickedKey, true, true);
+            case EMPTY_ITEM ->
+                handleEmptyHeldItem(
+                        (what, amount, mode) -> StorageHelper.poweredInsert(energySource, storage, what, amount,
+                                getActionSource(), mode),
+                        false);
+            case EMPTY_ENTIRE_ITEM ->
+                handleEmptyHeldItem(
+                        (what, amount, mode) -> StorageHelper.poweredInsert(energySource, storage, what, amount,
+                                getActionSource(), mode),
+                        true);
         }
 
         // Handle interactions where the player wants to put something into the network
@@ -444,16 +445,14 @@ public class MEStorageMenu extends AEBaseMenu
             return;
         }
 
+        // Any of the remaining actions are for items only
         if (!(clickedKey instanceof AEItemKey clickedItem)) {
             return;
         }
 
         switch (action) {
-            case SHIFT_CLICK:
-                moveOneStackToPlayer(clickedItem);
-                break;
-
-            case ROLL_DOWN: {
+            case SHIFT_CLICK -> moveOneStackToPlayer(clickedItem);
+            case ROLL_DOWN -> {
                 // Insert 1 of the carried stack into the network (or at least try to), regardless of what we're
                 // hovering in the network inventory.
                 var carried = getCarried();
@@ -465,9 +464,7 @@ public class MEStorageMenu extends AEBaseMenu
                     }
                 }
             }
-                break;
-            case ROLL_UP:
-            case PICKUP_SINGLE: {
+            case ROLL_UP, PICKUP_SINGLE -> {
                 // Extract 1 of the hovered stack from the network (or at least try to), and add it to the carried item
                 var item = getCarried();
 
@@ -491,8 +488,7 @@ public class MEStorageMenu extends AEBaseMenu
                     }
                 }
             }
-                break;
-            case PICKUP_OR_SET_DOWN: {
+            case PICKUP_OR_SET_DOWN -> {
                 if (!getCarried().isEmpty()) {
                     putCarriedItemIntoNetwork(false);
                 } else {
@@ -509,8 +505,7 @@ public class MEStorageMenu extends AEBaseMenu
                     }
                 }
             }
-                break;
-            case SPLIT_OR_PLACE_SINGLE:
+            case SPLIT_OR_PLACE_SINGLE -> {
                 if (!getCarried().isEmpty()) {
                     putCarriedItemIntoNetwork(true);
                 } else {
@@ -533,30 +528,27 @@ public class MEStorageMenu extends AEBaseMenu
                         setCarried(ItemStack.EMPTY);
                     }
                 }
-
-                break;
-            case CREATIVE_DUPLICATE:
+            }
+            case CREATIVE_DUPLICATE -> {
                 if (player.getAbilities().instabuild) {
                     var is = clickedItem.toStack();
                     is.setCount(is.getMaxStackSize());
                     setCarried(is);
                 }
-                break;
-            case MOVE_REGION:
+            }
+            case MOVE_REGION -> {
                 final int playerInv = player.getInventory().items.size();
                 for (int slotNum = 0; slotNum < playerInv; slotNum++) {
                     if (!moveOneStackToPlayer(clickedItem)) {
                         break;
                     }
                 }
-                break;
-            default:
-                AELog.warn("Received unhandled inventory action %s from client in %s", action, getClass());
-                break;
+            }
+            default -> AELog.warn("Received unhandled inventory action %s from client in %s", action, getClass());
         }
     }
 
-    private void tryFillContainerItem(@Nullable AEKey clickedKey, boolean moveToPlayer) {
+    private void tryFillContainerItem(@Nullable AEKey clickedKey, boolean moveToPlayer, boolean fillAll) {
         // Special handling for fluids to facilitate filling water/lava buckets which are often
         // needed for crafting and placement in-world.
         boolean grabbedEmptyBucket = false;
@@ -575,7 +567,7 @@ public class MEStorageMenu extends AEBaseMenu
         handleFillingHeldItem(
                 (amount, mode) -> StorageHelper.poweredExtraction(energySource, storage, clickedKey, amount,
                         getActionSource(), mode),
-                clickedKey);
+                clickedKey, fillAll);
 
         // If we grabbed an empty bucket, and after trying to fill it, it's still empty, put it back!
         if (grabbedEmptyBucket && getCarried().is(Items.BUCKET)) {

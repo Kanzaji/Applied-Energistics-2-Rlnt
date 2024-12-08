@@ -28,6 +28,7 @@ import com.google.common.collect.Iterators;
 import net.minecraft.Util;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
@@ -48,7 +49,7 @@ import appeng.api.orientation.BlockOrientation;
 import appeng.api.util.IConfigManager;
 import appeng.api.util.IConfigurableObject;
 import appeng.block.crafting.AbstractCraftingUnitBlock;
-import appeng.blockentity.grid.AENetworkBlockEntity;
+import appeng.blockentity.grid.AENetworkedBlockEntity;
 import appeng.core.definitions.AEBlocks;
 import appeng.me.cluster.IAEMultiBlock;
 import appeng.me.cluster.implementations.CraftingCPUCalculator;
@@ -57,7 +58,7 @@ import appeng.util.NullConfigManager;
 import appeng.util.Platform;
 import appeng.util.iterators.ChainedIterator;
 
-public class CraftingBlockEntity extends AENetworkBlockEntity
+public class CraftingBlockEntity extends AENetworkedBlockEntity
         implements IAEMultiBlock<CraftingCPUCluster>, IPowerChannelState, IConfigurableObject {
 
     private final CraftingCPUCalculator calc = new CraftingCPUCalculator(this);
@@ -171,21 +172,21 @@ public class CraftingBlockEntity extends AENetworkBlockEntity
     }
 
     @Override
-    public void saveAdditional(CompoundTag data) {
-        super.saveAdditional(data);
+    public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
+        super.saveAdditional(data, registries);
         data.putBoolean("core", this.isCoreBlock());
         if (this.isCoreBlock() && this.cluster != null) {
-            this.cluster.writeToNBT(data);
+            this.cluster.writeToNBT(data, registries);
         }
     }
 
     @Override
-    public void loadTag(CompoundTag data) {
-        super.loadTag(data);
+    public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
+        super.loadTag(data, registries);
         this.setCoreBlock(data.getBoolean("core"));
         if (this.isCoreBlock()) {
             if (this.cluster != null) {
-                this.cluster.readFromNBT(data);
+                this.cluster.readFromNBT(data, registries);
             } else {
                 this.setPreviousState(data.copy());
             }

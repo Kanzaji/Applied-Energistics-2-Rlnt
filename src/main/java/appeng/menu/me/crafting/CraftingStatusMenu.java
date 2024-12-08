@@ -28,8 +28,9 @@ import com.google.common.collect.ImmutableSet;
 
 import org.jetbrains.annotations.Nullable;
 
-import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.MenuType;
 
@@ -146,6 +147,10 @@ public class CraftingStatusMenu extends CraftingCPUMenu implements ISubMenu {
         for (var cpu : lastCpuSet) {
             var serial = getOrAssignCpuSerial(cpu);
             var status = cpu.getJobStatus();
+            var progress = 0f;
+            if (status != null && status.totalItems() > 0) {
+                progress = (float) (status.progress() / (double) status.totalItems());
+            }
             entries.add(new CraftingCpuListEntry(
                     serial,
                     cpu.getAvailableStorage(),
@@ -153,8 +158,7 @@ public class CraftingStatusMenu extends CraftingCPUMenu implements ISubMenu {
                     cpu.getName(),
                     cpu.getSelectionMode(),
                     status != null ? status.crafting() : null,
-                    status != null ? status.totalItems() : 0,
-                    status != null ? status.progress() : 0,
+                    progress,
                     status != null ? status.elapsedTimeNanos() : 0));
         }
         entries.sort(CPU_COMPARATOR);
@@ -196,11 +200,11 @@ public class CraftingStatusMenu extends CraftingCPUMenu implements ISubMenu {
     }
 
     public record CraftingCpuList(List<CraftingCpuListEntry> cpus) implements PacketWritable {
-        public CraftingCpuList(FriendlyByteBuf data) {
+        public CraftingCpuList(RegistryFriendlyByteBuf data) {
             this(readFromPacket(data));
         }
 
-        private static List<CraftingCpuListEntry> readFromPacket(FriendlyByteBuf data) {
+        private static List<CraftingCpuListEntry> readFromPacket(RegistryFriendlyByteBuf data) {
             var count = data.readInt();
             var result = new ArrayList<CraftingCpuListEntry>(count);
             for (int i = 0; i < count; i++) {
@@ -210,7 +214,7 @@ public class CraftingStatusMenu extends CraftingCPUMenu implements ISubMenu {
         }
 
         @Override
-        public void writeToPacket(FriendlyByteBuf data) {
+        public void writeToPacket(RegistryFriendlyByteBuf data) {
             data.writeInt(cpus.size());
             for (var entry : cpus) {
                 entry.writeToPacket(data);
@@ -225,34 +229,31 @@ public class CraftingStatusMenu extends CraftingCPUMenu implements ISubMenu {
             Component name,
             CpuSelectionMode mode,
             GenericStack currentJob,
-            long totalItems,
-            long progress,
+            float progress,
             long elapsedTimeNanos) {
-        public static CraftingCpuListEntry readFromPacket(FriendlyByteBuf data) {
+        public static CraftingCpuListEntry readFromPacket(RegistryFriendlyByteBuf data) {
             return new CraftingCpuListEntry(
                     data.readInt(),
                     data.readLong(),
                     data.readInt(),
-                    data.readBoolean() ? data.readComponent() : null,
+                    data.readBoolean() ? ComponentSerialization.TRUSTED_STREAM_CODEC.decode(data) : null,
                     data.readEnum(CpuSelectionMode.class),
                     GenericStack.readBuffer(data),
-                    data.readVarLong(),
-                    data.readVarLong(),
+                    data.readFloat(),
                     data.readVarLong());
         }
 
-        public void writeToPacket(FriendlyByteBuf data) {
+        public void writeToPacket(RegistryFriendlyByteBuf data) {
             data.writeInt(serial);
             data.writeLong(storage);
             data.writeInt(coProcessors);
             data.writeBoolean(name != null);
             if (name != null) {
-                data.writeComponent(name);
+                ComponentSerialization.TRUSTED_STREAM_CODEC.encode(data, name);
             }
             data.writeEnum(mode);
             GenericStack.writeBuffer(currentJob, data);
-            data.writeVarLong(totalItems);
-            data.writeVarLong(progress);
+            data.writeFloat(progress);
             data.writeVarLong(elapsedTimeNanos);
         }
     }

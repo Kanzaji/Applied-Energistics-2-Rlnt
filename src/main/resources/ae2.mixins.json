@@ -12,17 +12,14 @@
     "ItemEntityMixin",
     "tests.StructureUtilsMixin",
     "tests.TestCommandMixin",
-    "StructureTemplateMixin",
-    "UnbreakingMixin"
+    "StructureTemplateMixin"
   ],
   "client": [
     "unlitquad.ModelManagerMixin",
-    "unlitquad.BlockModelMixin",
     "unlitquad.BlockPartFaceDeserializerMixin",
     "AbstractContainerScreenMixin",
     "GuiGraphicsMixin",
     "WrappedGenericStackTooltipModIdMixin",
-    "ResizableSlotHighlightMixin",
     "PickColorMixin",
     "TextureAtlasMixin",
     "PonderWorldMixin",

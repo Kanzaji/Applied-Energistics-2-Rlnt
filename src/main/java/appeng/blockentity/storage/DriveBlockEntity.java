@@ -27,10 +27,11 @@ import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -53,7 +54,7 @@ import appeng.api.storage.StorageCells;
 import appeng.api.storage.cells.CellState;
 import appeng.api.storage.cells.StorageCell;
 import appeng.api.util.AECableType;
-import appeng.blockentity.grid.AENetworkInvBlockEntity;
+import appeng.blockentity.grid.AENetworkedInvBlockEntity;
 import appeng.blockentity.inventory.AppEngCellInventory;
 import appeng.client.render.model.DriveModelData;
 import appeng.core.AELog;
@@ -67,7 +68,7 @@ import appeng.menu.locator.MenuLocators;
 import appeng.util.inv.AppEngInternalInventory;
 import appeng.util.inv.filter.IAEItemFilter;
 
-public class DriveBlockEntity extends AENetworkInvBlockEntity
+public class DriveBlockEntity extends AENetworkedInvBlockEntity
         implements IChestOrDrive, IPriorityHost, IStorageProvider {
 
     private final AppEngCellInventory inv = new AppEngCellInventory(this, getCellCount());
@@ -96,7 +97,7 @@ public class DriveBlockEntity extends AENetworkInvBlockEntity
     }
 
     @Override
-    protected void writeToStream(FriendlyByteBuf data) {
+    protected void writeToStream(RegistryFriendlyByteBuf data) {
         super.writeToStream(data);
         updateClientSideState();
 
@@ -136,7 +137,7 @@ public class DriveBlockEntity extends AENetworkInvBlockEntity
     }
 
     @Override
-    protected boolean readFromStream(FriendlyByteBuf data) {
+    protected boolean readFromStream(RegistryFriendlyByteBuf data) {
         var changed = super.readFromStream(data);
 
         var packedState = data.readInt();
@@ -183,7 +184,7 @@ public class DriveBlockEntity extends AENetworkInvBlockEntity
             var tagName = "cell" + i;
             if (data.contains(tagName, Tag.TAG_COMPOUND)) {
                 var cellData = data.getCompound(tagName);
-                var id = new ResourceLocation(cellData.getString("id"));
+                var id = ResourceLocation.parse(cellData.getString("id"));
                 var cellStateName = cellData.getString("state");
 
                 clientSideCellItems[i] = BuiltInRegistries.ITEM.getOptional(id).orElse(null);
@@ -260,15 +261,15 @@ public class DriveBlockEntity extends AENetworkInvBlockEntity
     }
 
     @Override
-    public void loadTag(CompoundTag data) {
-        super.loadTag(data);
+    public void loadTag(CompoundTag data, HolderLookup.Provider registries) {
+        super.loadTag(data, registries);
         this.isCached = false;
         this.priority = data.getInt("priority");
     }
 
     @Override
-    public void saveAdditional(CompoundTag data) {
-        super.saveAdditional(data);
+    public void saveAdditional(CompoundTag data, HolderLookup.Provider registries) {
+        super.saveAdditional(data, registries);
         data.putInt("priority", this.priority);
     }
 

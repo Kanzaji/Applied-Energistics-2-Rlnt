@@ -1,8 +1,9 @@
 
 package appeng.datagen.providers.recipes;
 
-import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
+import net.minecraft.core.HolderLookup;
 import net.minecraft.data.PackOutput;
 import net.minecraft.data.recipes.RecipeCategory;
 import net.minecraft.data.recipes.RecipeOutput;
@@ -16,7 +17,6 @@ import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.level.ItemLike;
 import net.neoforged.neoforge.common.crafting.DifferenceIngredient;
 
-import appeng.api.ids.AETags;
 import appeng.api.stacks.AEKeyType;
 import appeng.api.util.AEColor;
 import appeng.core.AppEng;
@@ -26,11 +26,10 @@ import appeng.core.definitions.AEParts;
 import appeng.core.definitions.ItemDefinition;
 import appeng.datagen.providers.tags.ConventionTags;
 import appeng.items.tools.powered.PortableCellItem;
-import appeng.recipes.game.StorageCellUpgradeRecipe;
 
 public class CraftingRecipes extends AE2RecipeProvider {
-    public CraftingRecipes(PackOutput output) {
-        super(output);
+    public CraftingRecipes(PackOutput output, CompletableFuture<HolderLookup.Provider> registries) {
+        super(output, registries);
     }
 
     @Override
@@ -40,8 +39,6 @@ public class CraftingRecipes extends AE2RecipeProvider {
 
     @Override
     protected void buildRecipes(RecipeOutput consumer) {
-
-        storageCellUpgradeRecipes(consumer);
 
         // ====================================================
         // Basic Cards
@@ -381,7 +378,7 @@ public class CraftingRecipes extends AE2RecipeProvider {
                 .pattern("c a")
                 .pattern("aba")
                 .define('a', ConventionTags.IRON_INGOT)
-                .define('b', Items.STICKY_PISTON)
+                .define('b', Items.PISTON)
                 .define('c', ConventionTags.COPPER_INGOT)
                 .unlockedBy("has_crystals/fluix", has(ConventionTags.ALL_FLUIX))
                 .save(consumer, AppEng.makeId("network/blocks/inscribers"));
@@ -500,7 +497,7 @@ public class CraftingRecipes extends AE2RecipeProvider {
                 .unlockedBy("has_crystals/fluix", has(ConventionTags.ALL_FLUIX))
                 .unlockedBy("has_glass_cable", has(AEParts.GLASS_CABLE.item(AEColor.TRANSPARENT)))
                 .save(consumer, AppEng.makeId("network/blocks/spatial_io_pylon"));
-        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, AEBlocks.CHEST)
+        ShapedRecipeBuilder.shaped(RecipeCategory.MISC, AEBlocks.ME_CHEST)
                 .pattern("aba")
                 .pattern("c c")
                 .pattern("ded")
@@ -648,11 +645,6 @@ public class CraftingRecipes extends AE2RecipeProvider {
         // recipes/network/parts
         // ====================================================
 
-        ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, AEParts.CABLE_ANCHOR, 4)
-                .requires(AETags.METAL_INGOTS)
-                .requires(ConventionTags.QUARTZ_KNIFE)
-                .unlockedBy("has_knife", has(ConventionTags.QUARTZ_KNIFE))
-                .save(consumer, AppEng.makeId("network/parts/cable_anchor"));
         ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, AEParts.ENERGY_ACCEPTOR)
                 .requires(AEBlocks.ENERGY_ACCEPTOR)
                 .unlockedBy("has_energy_acceptor", has(AEBlocks.ENERGY_ACCEPTOR))
@@ -704,7 +696,7 @@ public class CraftingRecipes extends AE2RecipeProvider {
                 .pattern("bcb")
                 .define('a', AEItems.ANNIHILATION_CORE)
                 .define('b', ConventionTags.IRON_INGOT)
-                .define('c', Items.STICKY_PISTON)
+                .define('c', Items.PISTON)
                 .unlockedBy("has_annihilation_core", has(AEItems.ANNIHILATION_CORE))
                 .save(consumer, AppEng.makeId("network/parts/import_bus"));
         ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, AEParts.LEVEL_EMITTER)
@@ -719,7 +711,7 @@ public class CraftingRecipes extends AE2RecipeProvider {
                 .unlockedBy("has_calculation_processor", has(AEItems.CALCULATION_PROCESSOR))
                 .save(consumer, AppEng.makeId("network/parts/energy_level_emitter"));
         ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, AEParts.STORAGE_BUS)
-                .requires(Items.STICKY_PISTON)
+                .requires(Items.PISTON)
                 .requires(ConventionTags.INTERFACE)
                 .requires(Items.PISTON)
                 .unlockedBy("has_interface", has(ConventionTags.INTERFACE))
@@ -902,80 +894,25 @@ public class CraftingRecipes extends AE2RecipeProvider {
 
     }
 
-    record CellUpgradeTier(String suffix, ItemDefinition<?> cell, ItemLike component) {
-    }
-
-    private void storageCellUpgradeRecipes(RecipeOutput output) {
-        storageCellUpgradeRecipes(output, List.of(
-                new CellUpgradeTier("1k", AEItems.ITEM_CELL_1K, AEItems.CELL_COMPONENT_1K),
-                new CellUpgradeTier("4k", AEItems.ITEM_CELL_4K, AEItems.CELL_COMPONENT_4K),
-                new CellUpgradeTier("16k", AEItems.ITEM_CELL_16K, AEItems.CELL_COMPONENT_16K),
-                new CellUpgradeTier("64k", AEItems.ITEM_CELL_64K, AEItems.CELL_COMPONENT_64K),
-                new CellUpgradeTier("256k", AEItems.ITEM_CELL_256K, AEItems.CELL_COMPONENT_256K)));
-        storageCellUpgradeRecipes(output, List.of(
-                new CellUpgradeTier("1k", AEItems.FLUID_CELL_1K, AEItems.CELL_COMPONENT_1K),
-                new CellUpgradeTier("4k", AEItems.FLUID_CELL_4K, AEItems.CELL_COMPONENT_4K),
-                new CellUpgradeTier("16k", AEItems.FLUID_CELL_16K, AEItems.CELL_COMPONENT_16K),
-                new CellUpgradeTier("64k", AEItems.FLUID_CELL_64K, AEItems.CELL_COMPONENT_64K),
-                new CellUpgradeTier("256k", AEItems.FLUID_CELL_256K, AEItems.CELL_COMPONENT_256K)));
-        storageCellUpgradeRecipes(output, List.of(
-                new CellUpgradeTier("1k", AEItems.PORTABLE_ITEM_CELL1K, AEItems.CELL_COMPONENT_1K),
-                new CellUpgradeTier("4k", AEItems.PORTABLE_ITEM_CELL4K, AEItems.CELL_COMPONENT_4K),
-                new CellUpgradeTier("16k", AEItems.PORTABLE_ITEM_CELL16K, AEItems.CELL_COMPONENT_16K),
-                new CellUpgradeTier("64k", AEItems.PORTABLE_ITEM_CELL64K, AEItems.CELL_COMPONENT_64K),
-                new CellUpgradeTier("256k", AEItems.PORTABLE_ITEM_CELL256K, AEItems.CELL_COMPONENT_256K)));
-        storageCellUpgradeRecipes(output, List.of(
-                new CellUpgradeTier("1k", AEItems.PORTABLE_FLUID_CELL1K, AEItems.CELL_COMPONENT_1K),
-                new CellUpgradeTier("4k", AEItems.PORTABLE_FLUID_CELL4K, AEItems.CELL_COMPONENT_4K),
-                new CellUpgradeTier("16k", AEItems.PORTABLE_FLUID_CELL16K, AEItems.CELL_COMPONENT_16K),
-                new CellUpgradeTier("64k", AEItems.PORTABLE_FLUID_CELL64K, AEItems.CELL_COMPONENT_64K),
-                new CellUpgradeTier("256k", AEItems.PORTABLE_FLUID_CELL256K, AEItems.CELL_COMPONENT_256K)));
-    }
-
-    private void storageCellUpgradeRecipes(RecipeOutput output, List<CellUpgradeTier> tiers) {
-        for (int i = 0; i < tiers.size(); i++) {
-            var fromTier = tiers.get(i);
-            var inputCell = fromTier.cell().asItem();
-            var inputId = fromTier.cell().id();
-            var resultComponent = fromTier.component().asItem();
-
-            // Allow a direct upgrade to any higher tier
-            for (int j = i + 1; j < tiers.size(); j++) {
-                var toTier = tiers.get(j);
-                var resultCell = toTier.cell().asItem();
-                var inputComponent = toTier.component().asItem();
-
-                var recipeId = inputId.withPath(path -> "upgrade/" + path + "_to_" + toTier.suffix);
-
-                output.accept(
-                        recipeId,
-                        new StorageCellUpgradeRecipe(
-                                inputCell, inputComponent,
-                                resultCell, resultComponent),
-                        null);
-            }
-        }
-    }
-
     private void portableCell(RecipeOutput consumer, ItemDefinition<PortableCellItem> cell) {
         ItemDefinition<?> housing;
-        if (cell.asItem().getKeyType() == AEKeyType.items()) {
+        if (cell.get().getKeyType() == AEKeyType.items()) {
             housing = AEItems.ITEM_CELL_HOUSING;
-        } else if (cell.asItem().getKeyType() == AEKeyType.fluids()) {
+        } else if (cell.get().getKeyType() == AEKeyType.fluids()) {
             housing = AEItems.FLUID_CELL_HOUSING;
         } else {
-            throw new RuntimeException("No housing known for " + cell.asItem().getKeyType());
+            throw new RuntimeException("No housing known for " + cell.get().getKeyType());
         }
 
-        var component = cell.asItem().getTier().componentSupplier().get();
+        var component = cell.get().getTier().componentSupplier().get();
         ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, cell)
-                .requires(AEBlocks.CHEST)
+                .requires(AEBlocks.ME_CHEST)
                 .requires(component)
                 .requires(AEBlocks.ENERGY_CELL)
                 .requires(housing)
                 .unlockedBy("has_" + housing.id().getPath(), has(housing))
                 .unlockedBy("has_energy_cell", has(AEBlocks.ENERGY_CELL))
-                .save(consumer, cell.asItem().getRecipeId());
+                .save(consumer, cell.get().getRecipeId());
     }
 
     private void addSpatialCells(RecipeOutput consumer) {
@@ -1100,7 +1037,7 @@ public class CraftingRecipes extends AE2RecipeProvider {
                 .pattern("aba")
                 .pattern("cdc")
                 .pattern("aca")
-                .define('a', AEItems.SKY_DUST)
+                .define('a', ConventionTags.SKY_STONE_DUST)
                 .define('b', AEItems.CALCULATION_PROCESSOR)
                 .define('c', AEItems.CELL_COMPONENT_64K)
                 .define('d', AEBlocks.QUARTZ_GLASS)
